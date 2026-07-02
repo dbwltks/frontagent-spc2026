@@ -1,6 +1,5 @@
 "use client";
 
-import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef } from "react";
 
 let sharedShaderStartedAt: number | null = null;
@@ -8,6 +7,7 @@ let sharedShaderStartedAt: number | null = null;
 export function ShaderOrb({ active }: { active: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const activeRef = useRef(active);
+  const activeValueRef = useRef(active ? 1 : 0);
 
   useEffect(() => {
     activeRef.current = active;
@@ -64,31 +64,32 @@ export function ShaderOrb({ active }: { active: boolean }) {
       void main() {
         vec2 uv = v_uv;
         vec2 p = uv - 0.5;
-        float t = u_time * (0.34 + u_active * 0.2);
-        float breath = 0.5 + 0.5 * sin(u_time * 2.3);
+        float t = u_time * 0.56;
+        float pulse = sin(u_time * 3.8 + fbm(p * 5.5) * 2.4);
+        float breath = 0.5 + 0.5 * pulse;
 
         vec2 warp = vec2(
-          fbm(p * 3.0 + vec2(t, -t * 0.7)),
-          fbm(p * 3.0 + vec2(-t * 0.55, t * 0.85))
+          fbm(p * 3.5 + vec2(t * 1.25, -t * 0.92)),
+          fbm(p * 3.5 + vec2(-t * 0.82, t * 1.18))
         ) - 0.5;
-        vec2 q = p + warp * (0.34 + u_active * 0.12);
+        vec2 q = p + warp * (0.43 + breath * 0.08);
 
         float lime = smoothstep(0.58, 0.02, length(q - vec2(-0.25, 0.18)));
         float cyan = smoothstep(0.66, 0.03, length(q - vec2(0.23, 0.20)));
         float blue = smoothstep(0.72, 0.04, length(q - vec2(0.17, -0.28)));
         float teal = smoothstep(0.62, 0.03, length(q - vec2(-0.28, -0.24)));
-        float cloud = fbm(q * 4.0 + t);
+        float cloud = fbm(q * 4.8 + vec2(t * 1.4, -t * 1.1));
 
         vec3 color = vec3(0.20, 0.76, 0.96);
         color = mix(color, vec3(0.74, 0.94, 0.32), lime * 0.9);
         color = mix(color, vec3(0.37, 0.86, 1.0), cyan);
         color = mix(color, vec3(0.02, 0.39, 0.70), blue * 0.85);
         color = mix(color, vec3(0.04, 0.72, 0.82), teal * 0.72);
-        color += (cloud - 0.5) * 0.2;
-        color *= 1.02 + breath * (0.08 + u_active * 0.16);
+        color += (cloud - 0.5) * (0.3 + u_active * 0.08);
+        color *= 1.02 + breath * (0.12 + u_active * 0.22);
 
-        float grain = hash(uv * u_resolution + u_time) * 0.08;
-        color += grain;
+        float paperWash = fbm(uv * 9.0 + vec2(t * 0.03, -t * 0.02)) - 0.5;
+        color += paperWash * 0.035;
 
         gl_FragColor = vec4(color, 1.0);
       }
@@ -142,11 +143,14 @@ export function ShaderOrb({ active }: { active: boolean }) {
 
     const render = () => {
       resize();
+      // u_active를 매 프레임 lerp — 배경 움직임·밝기 모두 부드럽게 전환
+      const target = activeRef.current ? 1 : 0;
+      activeValueRef.current += (target - activeValueRef.current) * 0.035;
       gl.useProgram(program);
       gl.enableVertexAttribArray(position);
       gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
       gl.uniform1f(timeUniform, (performance.now() - shaderStartedAt) / 1000);
-      gl.uniform1f(activeUniform, activeRef.current ? 1 : 0);
+      gl.uniform1f(activeUniform, activeValueRef.current);
       gl.uniform2f(resolutionUniform, canvas.width, canvas.height);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
       frameId = window.requestAnimationFrame(render);
@@ -170,44 +174,44 @@ export function ShaderOrb({ active }: { active: boolean }) {
         className="absolute inset-0 h-full w-full rounded-full [clip-path:circle(50%)]"
         aria-hidden="true"
       />
-      <AnimatePresence initial={false}>
-        {active && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9, filter: "blur(6px)" }}
-            animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-            exit={{ opacity: 0, scale: 0.92, filter: "blur(6px)" }}
-            transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-            className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden rounded-full [clip-path:circle(50%)]"
-            aria-hidden="true"
-          >
-            <div className="flex h-12 items-center gap-1.5 rounded-full bg-white/10 px-4 backdrop-blur-[1px]">
-              {[18, 30, 22, 38, 26, 34, 20].map((height, index) => (
-                <span
-                  key={index}
-                  className="w-1.5 rounded-full bg-white/85 shadow-[0_0_10px_rgba(255,255,255,0.45)]"
-                  style={{
-                    height,
-                    animation: "shader-orb-voice-wave 780ms ease-in-out infinite",
-                    animationDelay: `${index * 80}ms`,
-                  }}
-                />
-              ))}
-            </div>
-            <style>{`
-              @keyframes shader-orb-voice-wave {
-                0%, 100% {
-                  transform: scaleY(0.45);
-                  opacity: 0.55;
-                }
-                50% {
-                  transform: scaleY(1);
-                  opacity: 1;
-                }
-              }
-            `}</style>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <div
+        className="pointer-events-none absolute inset-0 rounded-full opacity-35 mix-blend-soft-light [clip-path:circle(50%)]"
+        style={{
+          backgroundImage:
+            "repeating-linear-gradient(2deg, rgba(255,255,255,0.18) 0px, rgba(255,255,255,0.18) 1px, transparent 1px, transparent 13px), repeating-linear-gradient(91deg, rgba(15,70,90,0.12) 0px, rgba(15,70,90,0.12) 1px, transparent 1px, transparent 19px)",
+          filter: "blur(0.35px)",
+        }}
+        aria-hidden="true"
+      />
+      {active && (
+        <div
+          className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden rounded-full [clip-path:circle(50%)]"
+          aria-hidden="true"
+        >
+          <div className="flex h-12 items-center gap-1.5 rounded-full bg-white/10 px-4 backdrop-blur-[1px]">
+            {[18, 30, 22, 38, 26, 34, 20].map((height, index) => (
+              <span
+                key={index}
+                className="w-1.5 rounded-full bg-white/85 shadow-[0_0_10px_rgba(255,255,255,0.45)]"
+                style={{
+                  height,
+                  animationName: "shader-orb-voice-wave",
+                  animationDuration: "780ms",
+                  animationTimingFunction: "ease-in-out",
+                  animationIterationCount: "infinite",
+                  animationDelay: `${index * 80}ms`,
+                }}
+              />
+            ))}
+          </div>
+          <style>{`
+            @keyframes shader-orb-voice-wave {
+              0%, 100% { transform: scaleY(0.45); opacity: 0.55; }
+              50%       { transform: scaleY(1);    opacity: 1; }
+            }
+          `}</style>
+        </div>
+      )}
     </>
   );
 }
