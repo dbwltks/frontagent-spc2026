@@ -43,6 +43,30 @@ const channelLabel: Record<string, string> = {
   admin: "관리자",
 };
 
+/** 레거시 브랜드명(Front Agent 등)을 UI 표시명 Callbee로 통일한다. */
+export function formatAgentBrandText(text: string) {
+  return text.replace(/\bfront agent\b/gi, "Callbee").replace(/\balf voice\b/gi, "Callbee");
+}
+
+function normalizeAgentSenderName(
+  senderName: string | null | undefined,
+  senderType: string,
+) {
+  if (senderType === "admin") {
+    return senderName ?? "관리자";
+  }
+
+  if (senderType === "customer") {
+    return senderName;
+  }
+
+  if (!senderName || /^front agent$/i.test(senderName.trim()) || /^alf voice$/i.test(senderName.trim())) {
+    return "Callbee";
+  }
+
+  return formatAgentBrandText(senderName);
+}
+
 export function parseUtcTimestamp(value: string) {
   const hasTimezone = /[zZ]|[+-]\d{2}:?\d{2}$/.test(value);
   return new Date(hasTimezone ? value : `${value}Z`);
@@ -75,7 +99,7 @@ function mapConversationRecord(record: ConversationRecord): Conversation {
     assignee: record.assigned_admin_id ? "담당자 배정" : "AI 처리중",
     channel: channelLabel[record.channel] ?? record.channel,
     time: formatRelativeTime(record.last_message_at ?? record.updated_at ?? record.created_at),
-    preview: record.last_message ?? "",
+    preview: formatAgentBrandText(record.last_message ?? ""),
     tags: record.ai_enabled === false ? ["AI 응답 꺼짐"] : [],
     avatar: (record.customer_name ?? "고")[0],
     isLive: true,
@@ -105,8 +129,8 @@ function mapMessageRecord(record: ConversationMessageRecord): ConversationMessag
     id: record.id,
     conversationId: record.conversation_id,
     senderType: record.sender_type as ConversationMessage["senderType"],
-    senderName: record.sender_name,
-    message: record.message,
+    senderName: normalizeAgentSenderName(record.sender_name, record.sender_type),
+    message: formatAgentBrandText(record.message),
     createdAt: record.created_at,
   };
 }
@@ -144,4 +168,17 @@ export async function sendAdminMessage(
   }
 
   return response.json();
+}
+
+export async function deleteConversation(organizationId: string, conversationId: string) {
+  const response = await fetch(
+    `${getAgentApiBaseUrl()}/conversations/${encodeURIComponent(conversationId)}?organization_id=${encodeURIComponent(organizationId)}`,
+    { method: "DELETE" },
+  );
+
+  if (!response.ok) {
+    throw new Error(await readAgentApiError(response));
+  }
+
+  return response.json() as Promise<{ ok: boolean; conversation_id: string }>;
 }

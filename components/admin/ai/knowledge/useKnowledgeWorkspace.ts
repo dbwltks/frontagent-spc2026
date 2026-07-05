@@ -343,6 +343,48 @@ export function useKnowledgeWorkspace(
     await mutate();
   };
 
+  const handleMoveKnowledgeSource = async (sourceId: string, targetFolderId: string | null) => {
+    const source = data?.knowledge.find((item) => item.id === sourceId);
+    if (!source) return;
+
+    const currentFolderId = source.folderId ?? null;
+    if (currentFolderId === targetFolderId) return;
+
+    const targetFolderName =
+      targetFolderId === null
+        ? "기본 폴더"
+        : (data?.knowledgeFolders.find((folder) => folder.id === targetFolderId)?.name ?? "알 수 없는 폴더");
+
+    const previousData = data;
+    setMutationError(null);
+
+    await patchKnowledgeCache(mutate, (current) => ({
+      ...current,
+      knowledge: current.knowledge.map((item) =>
+        item.id === sourceId
+          ? { ...item, folderId: targetFolderId ?? undefined, folder: targetFolderName }
+          : item,
+      ),
+    }));
+
+    try {
+      await updateKnowledgeSource({
+        organizationId,
+        sourceId,
+        data: { folder_id: targetFolderId },
+      });
+      await mutate();
+    } catch (error) {
+      if (previousData) {
+        await mutate(previousData, { revalidate: false });
+      } else {
+        await mutate();
+      }
+      setMutationError(toErrorMessage(error, "폴더 이동 실패"));
+      throw error;
+    }
+  };
+
   return {
     knowledge,
     knowledgeFolders,
@@ -371,5 +413,7 @@ export function useKnowledgeWorkspace(
     handleCreateFolder,
     handleRenameFolder,
     handleDeleteFolder,
+    handleMoveKnowledgeSource,
+    dismissKnowledgeError: () => setMutationError(null),
   };
 }

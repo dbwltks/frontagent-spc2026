@@ -330,6 +330,7 @@ export async function updateKnowledgeSource({
     title?: string;
     is_referenced?: boolean;
     status?: string;
+    folder_id?: string | null;
   };
 }) {
   const response = await fetch(

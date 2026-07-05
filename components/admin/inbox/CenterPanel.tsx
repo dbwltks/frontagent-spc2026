@@ -7,11 +7,13 @@ export function CenterPanel({
   message,
   onMessageChange,
   user,
+  onDeleted,
 }: {
   conversation: Conversation;
   message: string;
   onMessageChange: (value: string) => void;
   user: User;
+  onDeleted?: () => void;
 }) {
   return (
     <section className="h-full min-h-0 min-w-0 overflow-hidden rounded-[20px] bg-white">
@@ -20,6 +22,7 @@ export function CenterPanel({
         message={message}
         onMessageChange={onMessageChange}
         user={user}
+        onDeleted={onDeleted}
       />
     </section>
   );

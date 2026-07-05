@@ -17,13 +17,29 @@ export function parseUtcTimestamp(value: string) {
   return new Date(hasTimezone ? value : `${value}Z`);
 }
 
+function formatAgentBrandText(text: string) {
+  return text.replace(/\bfront agent\b/gi, "Callbee").replace(/\balf voice\b/gi, "Callbee");
+}
+
+function normalizeAgentSenderName(
+  senderName: string | null | undefined,
+  senderType: string,
+) {
+  if (senderType === "admin") return senderName ?? "관리자";
+  if (senderType === "customer") return senderName;
+  if (!senderName || /^front agent$/i.test(senderName.trim()) || /^alf voice$/i.test(senderName.trim())) {
+    return "Callbee";
+  }
+  return formatAgentBrandText(senderName);
+}
+
 function mapMessageRecord(record: ConversationMessageRecord): ConversationMessage {
   return {
     id: record.id,
     conversationId: record.conversation_id,
     senderType: record.sender_type as ConversationMessage["senderType"],
-    senderName: record.sender_name,
-    message: record.message,
+    senderName: normalizeAgentSenderName(record.sender_name, record.sender_type),
+    message: formatAgentBrandText(record.message),
     createdAt: record.created_at,
   };
 }

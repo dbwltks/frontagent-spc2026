@@ -69,6 +69,8 @@ export type AiCall = {
   nextAction: string;
   task: string;
   canTakeOver: boolean;
+  callStartedAt?: string | null;
+  callEndedAt?: string | null;
 };
 
 export type ReservationStatus =
@@ -136,6 +138,9 @@ export type ServiceItem = {
   basePrice: number;
   durationMinutes: number;
   isAvailable?: boolean;
+  approvalStatus?: string | null;
+  syncStatus?: string | null;
+  pendingPayload?: Record<string, unknown> | null;
   rawPayload?: Record<string, unknown> | null;
   createdAt?: string | null;
   updatedAt?: string | null;
@@ -151,9 +156,16 @@ export type ServiceItemOption = {
   additionalPrice: number;
   additionalDuration: number;
   isAvailable?: boolean;
+  approvalStatus?: string | null;
+  syncStatus?: string | null;
+  pendingPayload?: Record<string, unknown> | null;
   rawPayload?: Record<string, unknown> | null;
   createdAt?: string | null;
   updatedAt?: string | null;
+};
+
+export type ServiceCatalogItem = ServiceItem & {
+  options: ServiceItemOption[];
 };
 
 export type ServicePriceCalculation = {

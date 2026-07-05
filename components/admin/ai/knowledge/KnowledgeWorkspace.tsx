@@ -2,6 +2,20 @@
 
 import React from "react";
 import type { User } from "@supabase/supabase-js";
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
+  type Modifier,
+} from "@dnd-kit/core";
+import { CSS } from "@dnd-kit/utilities";
 import { Dropdown } from "@/components/ui/Dropdown";
 import {
   ArrowUpDown,
@@ -33,6 +47,11 @@ import type { KnowledgeChunk, KnowledgeFolder, KnowledgeSource } from "../types"
 
 type SortKey = "title" | "type" | "referenceCount" | "resolutionRate" | "updatedAt";
 type SortDir = "asc" | "desc";
+
+const restrictToVerticalAxis: Modifier = ({ transform }) => ({
+  ...transform,
+  x: 0,
+});
 
 export function KnowledgeWorkspace({ organizationId, user }: { organizationId: string; user?: User | null }) {
   const [pendingNotice, setPendingNotice] = useState<number | null>(null);
@@ -118,6 +137,70 @@ export function KnowledgeWorkspace({ organizationId, user }: { organizationId: s
   };
 
   const [pendingSourceIds, setPendingSourceIds] = useState<Set<string>>(new Set());
+  const [draggingSource, setDraggingSource] = useState<KnowledgeSource | null>(null);
+  const [movingSourceIds, setMovingSourceIds] = useState<Set<string>>(new Set());
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    }),
+  );
+
+  const resolveDropFolderId = (overId: string | number | undefined): string | null | undefined => {
+    if (overId === undefined) return undefined;
+    if (typeof overId !== "string" || !overId.startsWith("folder:")) return undefined;
+    const folderKey = overId.slice("folder:".length);
+    return folderKey === UNFILED_FOLDER_ID ? null : folderKey;
+  };
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const sourceId = event.active.data.current?.sourceId;
+    if (typeof sourceId !== "string") return;
+    const source = workspace.knowledge.find((item) => item.id === sourceId) ?? null;
+    setDraggingSource(source);
+  };
+
+  const handleDragOver = (event: DragOverEvent) => {
+    const folderKey = event.over?.data.current?.folderKey;
+    if (typeof folderKey !== "string") return;
+    setExpandedFolders((prev) => {
+      const next = new Set(prev);
+      next.add(folderKey === UNFILED_FOLDER_ID ? null : folderKey);
+      return next;
+    });
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    setDraggingSource(null);
+    const sourceId = event.active.data.current?.sourceId;
+    if (typeof sourceId !== "string") return;
+
+    const targetFolderId = resolveDropFolderId(event.over?.id);
+    if (targetFolderId === undefined) return;
+
+    const source = workspace.knowledge.find((item) => item.id === sourceId);
+    if (!source) return;
+    const currentFolderId = source.folderId ?? null;
+    if (currentFolderId === targetFolderId) return;
+
+    setMovingSourceIds((current) => new Set(current).add(sourceId));
+    try {
+      await workspace.handleMoveKnowledgeSource(sourceId, targetFolderId);
+    } catch {
+      // mutationError is set in workspace hook
+    } finally {
+      setMovingSourceIds((current) => {
+        const next = new Set(current);
+        next.delete(sourceId);
+        return next;
+      });
+    }
+  };
+
+  const handleDragCancel = () => {
+    setDraggingSource(null);
+  };
+
   const runSourceMutation = async (sourceId: string, mutation: () => Promise<void>) => {
     setPendingSourceIds((c) => new Set(c).add(sourceId));
     try { await mutation(); }
@@ -237,6 +320,19 @@ export function KnowledgeWorkspace({ organizationId, user }: { organizationId: s
           </div>
         )}
 
+        {workspace.knowledgeError && (
+          <div className="flex items-center justify-between border-b border-red-100 bg-red-50 px-6 py-3">
+            <p className="text-sm font-bold text-red-700">{workspace.knowledgeError}</p>
+            <button
+              type="button"
+              onClick={() => workspace.dismissKnowledgeError()}
+              className="ml-4 text-xs font-bold text-red-400 hover:text-red-600"
+            >
+              닫기
+            </button>
+          </div>
+        )}
+
         {/* 컬럼 헤더 */}
         <div className="grid grid-cols-[minmax(0,1fr)_70px_90px_100px_48px_20px] gap-x-4 border-b border-gray-100 px-5 py-3 text-xs font-semibold text-gray-800">
           <SortHeader label="이름" sortKey="title" current={sortKey} dir={sortDir} onSort={handleSort} />
@@ -248,179 +344,149 @@ export function KnowledgeWorkspace({ organizationId, user }: { organizationId: s
         </div>
 
         {/* 폴더 아코디언 */}
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {workspace.isKnowledgeLoading ? (
-            <div className="flex items-center justify-center py-16 text-sm font-semibold text-gray-400">불러오는 중...</div>
-          ) : (
-            <>
-              {rootFolderIds.map((folderId) => {
-                const isUnfiled = folderId === UNFILED_FOLDER_ID;
-                const folder = folderId ? folderById.get(folderId) : null;
-                const name = isUnfiled ? "기본 폴더" : folder?.name ?? "알 수 없는 폴더";
-                const sources = sourcesByFolder.get(folderId ?? "") ?? [];
-                const filtered = filteredSources(sources);
-                const isExpanded = expandedFolders.has(folderId);
+        <DndContext
+          sensors={sensors}
+          modifiers={[restrictToVerticalAxis]}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDragEnd={(event) => void handleDragEnd(event)}
+          onDragCancel={handleDragCancel}
+        >
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {workspace.isKnowledgeLoading ? (
+              <div className="flex items-center justify-center py-16 text-sm font-semibold text-gray-400">불러오는 중...</div>
+            ) : (
+              <>
+                {rootFolderIds.map((folderId) => {
+                  const isUnfiled = folderId === UNFILED_FOLDER_ID;
+                  const folder = folderId ? folderById.get(folderId) : null;
+                  const name = isUnfiled ? "기본 폴더" : folder?.name ?? "알 수 없는 폴더";
+                  const sources = sourcesByFolder.get(folderId ?? "") ?? [];
+                  const filtered = filteredSources(sources);
+                  const isExpanded = expandedFolders.has(folderId);
 
-                if (search && filtered.length === 0) return null;
+                  if (search && filtered.length === 0) return null;
 
-                return (
-                  <div key={folderId} className="border-b border-gray-100 last:border-b-0">
-                    {/* 폴더 헤더 — 테이블 컬럼과 동일한 그리드 */}
-                    <div className="group grid grid-cols-[minmax(0,1fr)_70px_90px_100px_48px_20px] gap-x-4 px-5 py-4 hover:bg-gray-50">
-                      <button
-                        onClick={() => toggleFolder(folderId)}
-                        className="flex min-w-0 items-center gap-2 text-left"
-                      >
-                        {isExpanded
-                          ? <ChevronDown className="h-4 w-4 shrink-0 text-gray-400" />
-                          : <ChevronRight className="h-4 w-4 shrink-0 text-gray-400" />
-                        }
-                        <FolderOpen className="h-4 w-4 shrink-0 text-amber-400" />
-                        <span className="text-sm font-semibold text-gray-800">{name}</span>
-                        <span className="text-xs font-medium text-gray-400">{sources.length}개</span>
-                      </button>
-                      {/* 형식 — 비움 */}
-                      <div />
-                      {/* 참조 횟수 합계 */}
-                      <div className="flex items-center justify-end text-xs font-semibold text-gray-500">
-                        {sources.reduce((sum, s) => sum + s.referenceCount, 0).toLocaleString()}
-                      </div>
-                      {/* 업데이트 — 비움 */}
-                      <div />
-                      {/* 상태 */}
-                      <div className="flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
-                        {sources.some((s) => s.status === "인덱싱중") ? (
-                          <RefreshCw className="h-4 w-4 animate-spin text-purple-400" />
-                        ) : (
-                          <Toggle
-                            enabled={!isUnfiled ? (folder?.isActive ?? true) : sources.some((s) => s.status !== "미참조")}
-                            onChange={() => {
-                              if (!isUnfiled && folder) {
-                                void workspace.handleToggleFolderActive(folder.id, !(folder.isActive ?? true));
-                              }
-                            }}
-                            disabled={isUnfiled}
-                            size="sm"
-                          />
-                        )}
-                      </div>
-                      {/* 액션 */}
-                      <div className="relative flex items-center justify-end">
-                        {!isUnfiled && folder && (
-                          <FolderMenuButton
-                            onEdit={() => openFolderEditModal(folderId!)}
-                            onDelete={() => void deleteFolder(folderId!)}
-                          />
-                        )}
-                      </div>
-                    </div>
+                  return (
+                    <div key={folderId} className="border-b border-gray-100 last:border-b-0">
+                      <DroppableFolderRow folderKey={folderId ?? UNFILED_FOLDER_ID}>
+                        <FolderRow
+                          onActivate={() => toggleFolder(folderId)}
+                          name={name}
+                          count={sources.length}
+                          referenceTotal={sources.reduce((sum, s) => sum + s.referenceCount, 0)}
+                          isExpanded={isExpanded}
+                          isUnfiled={isUnfiled}
+                          folder={folder ?? undefined}
+                          toggleEnabled={!isUnfiled ? (folder?.isActive ?? true) : sources.some((s) => s.status !== "미참조")}
+                          onToggleActive={() => {
+                            if (!isUnfiled && folder) {
+                              void workspace.handleToggleFolderActive(folder.id, !(folder.isActive ?? true));
+                            }
+                          }}
+                          onEdit={!isUnfiled && folder ? () => openFolderEditModal(folderId!) : undefined}
+                          onDelete={!isUnfiled && folder ? () => void deleteFolder(folderId!) : undefined}
+                          isIndexing={sources.some((s) => s.status === "인덱싱중")}
+                        />
+                      </DroppableFolderRow>
 
-                    {/* 지식 목록 */}
-                    {isExpanded && (
-                      <div>
-                        {filtered.length === 0 && (childFoldersByParentId.get(folderId) ?? []).length === 0 ? (
-                          <div className="py-6 text-center text-sm font-semibold text-gray-400">
-                            {search ? "검색 결과 없음" : "지식이 없습니다"}
-                          </div>
-                        ) : (
-                          <>
-                            {/* 하위 폴더 먼저 */}
-                            {(childFoldersByParentId.get(folderId) ?? []).map((childFolder) => {
-                              const childSources = sourcesByFolder.get(childFolder.id) ?? [];
-                              const childFiltered = filteredSources(childSources);
-                              const isChildExpanded = expandedFolders.has(childFolder.id);
-                              if (search && childFiltered.length === 0) return null;
-                              return (
-                                <div key={childFolder.id}>
-                                  <div className="group grid grid-cols-[minmax(0,1fr)_70px_90px_100px_48px_20px] gap-x-4 px-5 py-4 hover:bg-gray-50">
-                                    <button onClick={() => toggleFolder(childFolder.id)} className="flex min-w-0 items-center gap-2 text-left pl-4">
-                                      {isChildExpanded
-                                        ? <ChevronDown className="h-4 w-4 shrink-0 text-gray-400" />
-                                        : <ChevronRight className="h-4 w-4 shrink-0 text-gray-400" />
-                                      }
-                                      <FolderOpen className="h-4 w-4 shrink-0 text-amber-400" />
-                                      <span className="text-sm font-semibold text-gray-800">{childFolder.name}</span>
-                                      <span className="text-xs font-medium text-gray-400">{childSources.length}개</span>
-                                    </button>
-                                    <div />
-                                    <div className="flex items-center justify-end text-xs font-semibold text-gray-500">
-                                      {childSources.reduce((sum, s) => sum + s.referenceCount, 0).toLocaleString()}
-                                    </div>
-                                    <div />
-                                    <div className="flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
-                                      {childSources.some((s) => s.status === "인덱싱중") ? (
-                                        <RefreshCw className="h-4 w-4 animate-spin text-purple-400" />
-                                      ) : (
-                                        <Toggle
-                                          enabled={childFolder.isActive ?? true}
-                                          onChange={() => void workspace.handleToggleFolderActive(childFolder.id, !(childFolder.isActive ?? true))}
-                                          size="sm"
-                                        />
-                                      )}
-                                    </div>
-                                    <div className="relative flex items-center justify-end">
-                                      <FolderMenuButton
+                      {isExpanded && (
+                        <div>
+                          {filtered.length === 0 && (childFoldersByParentId.get(folderId) ?? []).length === 0 ? (
+                            <div className="py-6 text-center text-sm font-semibold text-gray-400">
+                              {search ? "검색 결과 없음" : "지식이 없습니다"}
+                            </div>
+                          ) : (
+                            <>
+                              {(childFoldersByParentId.get(folderId) ?? []).map((childFolder) => {
+                                const childSources = sourcesByFolder.get(childFolder.id) ?? [];
+                                const childFiltered = filteredSources(childSources);
+                                const isChildExpanded = expandedFolders.has(childFolder.id);
+                                if (search && childFiltered.length === 0) return null;
+                                return (
+                                  <div key={childFolder.id}>
+                                    <DroppableFolderRow folderKey={childFolder.id}>
+                                      <FolderRow
+                                        indentLevel={1}
+                                        onActivate={() => toggleFolder(childFolder.id)}
+                                        name={childFolder.name}
+                                        count={childSources.length}
+                                        referenceTotal={childSources.reduce((sum, s) => sum + s.referenceCount, 0)}
+                                        isExpanded={isChildExpanded}
+                                        isUnfiled={false}
+                                        folder={childFolder}
+                                        toggleEnabled={childFolder.isActive ?? true}
+                                        onToggleActive={() => void workspace.handleToggleFolderActive(childFolder.id, !(childFolder.isActive ?? true))}
                                         onEdit={() => openFolderEditModal(childFolder.id)}
                                         onDelete={() => void deleteFolder(childFolder.id)}
+                                        isIndexing={childSources.some((s) => s.status === "인덱싱중")}
                                       />
-                                    </div>
+                                    </DroppableFolderRow>
+                                    {isChildExpanded && (
+                                      <div>
+                                        {childFiltered.map((source) => (
+                                          <DraggableKnowledgeRow
+                                            key={source.id}
+                                            source={source}
+                                            folderKey={childFolder.id}
+                                            isSelected={source.id === workspace.selectedKnowledgeId}
+                                            isMutating={pendingSourceIds.has(source.id) || movingSourceIds.has(source.id)}
+                                            onSelect={() => { workspace.setSelectedKnowledgeId(source.id); workspace.setPeekSource(source); }}
+                                            onToggle={() => runSourceMutation(source.id, () => workspace.handleUpdateKnowledge(source.id, { is_referenced: source.status === "미참조" }))}
+                                            onEdit={() => { workspace.setSelectedKnowledgeId(source.id); setModal("edit"); }}
+                                            onDelete={() => runSourceMutation(source.id, () => workspace.handleDeleteKnowledge(source.id))}
+                                            onReindex={() => runSourceMutation(source.id, () => workspace.handleReindexKnowledge(source.id))}
+                                            indentLevel={1}
+                                          />
+                                        ))}
+                                      </div>
+                                    )}
                                   </div>
-                                  {isChildExpanded && (
-                                    <div>
-                                      {childFiltered.map((source) => (
-                                        <KnowledgeRow
-                                          key={source.id}
-                                          source={source}
-                                          isSelected={source.id === workspace.selectedKnowledgeId}
-                                          isMutating={pendingSourceIds.has(source.id)}
-                                          onSelect={() => { workspace.setSelectedKnowledgeId(source.id); workspace.setPeekSource(source); }}
-                                          onToggle={() => runSourceMutation(source.id, () => workspace.handleUpdateKnowledge(source.id, { is_referenced: source.status === "미참조" }))}
-                                          onEdit={() => { workspace.setSelectedKnowledgeId(source.id); setModal("edit"); }}
-                                          onDelete={() => runSourceMutation(source.id, () => workspace.handleDeleteKnowledge(source.id))}
-                                          onReindex={() => runSourceMutation(source.id, () => workspace.handleReindexKnowledge(source.id))}
-                                          indentLevel={1}
-                                        />
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                            {/* 지식 목록 */}
-                            {filtered.map((source) => (
-                              <KnowledgeRow
-                                key={source.id}
-                                source={source}
-                                isSelected={source.id === workspace.selectedKnowledgeId}
-                                isMutating={pendingSourceIds.has(source.id)}
-                                onSelect={() => { workspace.setSelectedKnowledgeId(source.id); workspace.setPeekSource(source); }}
-                                onToggle={() => runSourceMutation(source.id, () => workspace.handleUpdateKnowledge(source.id, { is_referenced: source.status === "미참조" }))}
-                                onEdit={() => { workspace.setSelectedKnowledgeId(source.id); setModal("edit"); }}
-                                onDelete={() => runSourceMutation(source.id, () => workspace.handleDeleteKnowledge(source.id))}
-                                onReindex={() => runSourceMutation(source.id, () => workspace.handleReindexKnowledge(source.id))}
-                              />
-                            ))}
-                          </>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                                );
+                              })}
+                              {filtered.map((source) => (
+                                <DraggableKnowledgeRow
+                                  key={source.id}
+                                  source={source}
+                                  folderKey={folderId ?? UNFILED_FOLDER_ID}
+                                  isSelected={source.id === workspace.selectedKnowledgeId}
+                                  isMutating={pendingSourceIds.has(source.id) || movingSourceIds.has(source.id)}
+                                  onSelect={() => { workspace.setSelectedKnowledgeId(source.id); workspace.setPeekSource(source); }}
+                                  onToggle={() => runSourceMutation(source.id, () => workspace.handleUpdateKnowledge(source.id, { is_referenced: source.status === "미참조" }))}
+                                  onEdit={() => { workspace.setSelectedKnowledgeId(source.id); setModal("edit"); }}
+                                  onDelete={() => runSourceMutation(source.id, () => workspace.handleDeleteKnowledge(source.id))}
+                                  onReindex={() => runSourceMutation(source.id, () => workspace.handleReindexKnowledge(source.id))}
+                                />
+                              ))}
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
 
-              {/* 미분류 없으면 빈 상태 */}
-              {workspace.knowledge.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-20 text-center">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gray-100">
-                    <BookOpen className="h-7 w-7 text-gray-400" />
+                {workspace.knowledge.length === 0 && (
+                  <div className="flex flex-col items-center justify-center py-20 text-center">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gray-100">
+                      <BookOpen className="h-7 w-7 text-gray-400" />
+                    </div>
+                    <p className="mt-3 text-sm font-bold text-gray-400">아직 지식이 없습니다</p>
+                    <p className="mt-1 text-xs font-semibold text-gray-300">지식 추가 버튼을 눌러 첫 번째 지식을 추가하세요</p>
                   </div>
-                  <p className="mt-3 text-sm font-bold text-gray-400">아직 지식이 없습니다</p>
-                  <p className="mt-1 text-xs font-semibold text-gray-300">지식 추가 버튼을 눌러 첫 번째 지식을 추가하세요</p>
-                </div>
-              )}
-            </>
-          )}
-        </div>
+                )}
+              </>
+            )}
+          </div>
+
+          <DragOverlay dropAnimation={null}>
+            {draggingSource ? (
+              <div className="rounded-xl border border-blue-200 bg-white px-4 py-3 shadow-lg">
+                <span className="text-sm font-semibold text-gray-900">{draggingSource.title}</span>
+              </div>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
       </div>
 
       <AiCosDetailPanel activeSection="knowledge" organizationId={organizationId} user={user} />
@@ -515,6 +581,163 @@ export function KnowledgeWorkspace({ organizationId, user }: { organizationId: s
   );
 }
 
+function DroppableFolderRow({ folderKey, children }: { folderKey: string; children: React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `folder:${folderKey}`,
+    data: { type: "folder", folderKey },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`transition-colors ${isOver ? "bg-blue-50 ring-2 ring-inset ring-blue-200" : ""}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+function DraggableKnowledgeRow({
+  source,
+  folderKey,
+  isSelected,
+  isMutating,
+  onSelect,
+  onToggle,
+  onEdit,
+  onDelete,
+  onReindex,
+  indentLevel = 0,
+}: {
+  source: KnowledgeSource;
+  folderKey: string;
+  isSelected: boolean;
+  isMutating: boolean;
+  onSelect: () => void;
+  onToggle: () => void;
+  onEdit: () => void;
+  onDelete: () => Promise<void>;
+  onReindex?: () => Promise<void>;
+  indentLevel?: number;
+}) {
+  const isIndexing = source.status === "인덱싱중";
+  const dragDisabled = isMutating || isIndexing;
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `source:${source.id}`,
+    data: { type: "source", sourceId: source.id, folderKey },
+    disabled: dragDisabled,
+  });
+
+  const style = transform ? { transform: CSS.Translate.toString(transform) } : undefined;
+
+  return (
+    <KnowledgeRow
+      source={source}
+      isSelected={isSelected}
+      isMutating={isMutating}
+      onSelect={onSelect}
+      onToggle={onToggle}
+      onEdit={onEdit}
+      onDelete={onDelete}
+      onReindex={onReindex}
+      indentLevel={indentLevel}
+      rowRef={setNodeRef}
+      rowStyle={style}
+      isDragging={isDragging}
+      dragProps={dragDisabled ? undefined : { ...attributes, ...listeners }}
+    />
+  );
+}
+
+function stopRowActivation(event: React.SyntheticEvent) {
+  event.stopPropagation();
+}
+
+function FolderRow({
+  indentLevel = 0,
+  onActivate,
+  name,
+  count,
+  referenceTotal,
+  isExpanded,
+  isUnfiled,
+  folder,
+  toggleEnabled,
+  onToggleActive,
+  onEdit,
+  onDelete,
+  isIndexing,
+}: {
+  indentLevel?: number;
+  onActivate: () => void;
+  name: string;
+  count: number;
+  referenceTotal: number;
+  isExpanded: boolean;
+  isUnfiled: boolean;
+  folder?: KnowledgeFolder;
+  toggleEnabled: boolean;
+  onToggleActive: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
+  isIndexing: boolean;
+}) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onActivate}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onActivate();
+        }
+      }}
+      className="group grid min-h-[28px] cursor-pointer grid-cols-[minmax(0,1fr)_70px_90px_100px_48px_20px] items-center gap-x-4 px-5 py-1.5 hover:bg-gray-50"
+    >
+      <div className={`flex min-w-0 items-center gap-2 text-left ${indentLevel > 0 ? "pl-4" : ""}`}>
+        {isExpanded
+          ? <ChevronDown className="h-4 w-4 shrink-0 text-gray-400" />
+          : <ChevronRight className="h-4 w-4 shrink-0 text-gray-400" />
+        }
+        <FolderOpen className="h-4 w-4 shrink-0 text-amber-400" />
+        <span className="text-sm font-semibold text-gray-800">{name}</span>
+        <span className="text-xs font-medium text-gray-400">{count}개</span>
+      </div>
+      <div />
+      <div className="flex items-center justify-end text-xs font-semibold text-gray-500">
+        {referenceTotal.toLocaleString()}
+      </div>
+      <div />
+      <div
+        className="flex items-center justify-center self-stretch py-1.5"
+        onClick={stopRowActivation}
+        onPointerDown={stopRowActivation}
+      >
+        {isIndexing ? (
+          <RefreshCw className="h-4 w-4 animate-spin text-purple-400" />
+        ) : (
+          <Toggle
+            enabled={toggleEnabled}
+            onChange={onToggleActive}
+            disabled={isUnfiled}
+            size="sm"
+          />
+        )}
+      </div>
+      <div
+        className="relative flex items-center justify-end self-stretch py-1.5"
+        onClick={stopRowActivation}
+        onPointerDown={stopRowActivation}
+      >
+        {!isUnfiled && onEdit && onDelete && (
+          <FolderMenuButton onEdit={onEdit} onDelete={onDelete} />
+        )}
+      </div>
+    </div>
+  );
+}
+
 function FolderMenuButton({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) {
   return (
     <Dropdown
@@ -534,6 +757,10 @@ function FolderMenuButton({ onEdit, onDelete }: { onEdit: () => void; onDelete: 
 
 function KnowledgeRow({
   source, isSelected, isMutating, onSelect, onToggle, onEdit, onDelete, onReindex, indentLevel = 0,
+  rowRef,
+  rowStyle,
+  dragProps,
+  isDragging = false,
 }: {
   source: KnowledgeSource;
   isSelected: boolean;
@@ -544,8 +771,11 @@ function KnowledgeRow({
   onDelete: () => Promise<void>;
   onReindex?: () => Promise<void>;
   indentLevel?: number;
+  rowRef?: (element: HTMLElement | null) => void;
+  rowStyle?: React.CSSProperties;
+  dragProps?: React.HTMLAttributes<HTMLElement>;
+  isDragging?: boolean;
 }) {
-  const [menuOpen, setMenuOpen] = useState(false);
   const isOn = source.status !== "미참조";
   const isIndexing = source.status === "인덱싱중";
   const typeColor: Record<KnowledgeSource["type"], string> = {
@@ -562,10 +792,13 @@ function KnowledgeRow({
 
   return (
     <div
+      ref={rowRef}
+      style={rowStyle}
+      {...dragProps}
       onClick={onSelect}
-      className={`grid grid-cols-[minmax(0,1fr)_70px_90px_100px_48px_20px] items-center gap-x-4 border-b border-gray-100 px-5 py-4 transition-colors last:border-b-0 ${
-        isSelected ? "bg-blue-50" : "hover:bg-gray-50"
-      }`}
+      className={`grid min-h-[28px] grid-cols-[minmax(0,1fr)_70px_90px_100px_48px_20px] items-center gap-x-4 border-b border-gray-100 px-5 py-1.5 transition-colors last:border-b-0 ${
+        dragProps ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
+      } ${isDragging ? "opacity-40" : isSelected ? "bg-blue-50" : "hover:bg-gray-50"}`}
     >
       <div className={`flex min-w-0 items-center gap-3 ${indentLevel > 0 ? "pl-14" : "pl-10"}`}>
         <span className="shrink-0">{typeIcon[source.type]}</span>
@@ -587,16 +820,22 @@ function KnowledgeRow({
         {isIndexing ? <span className="text-gray-300">-</span> : source.referenceCount.toLocaleString()}
       </div>
       <div className="flex justify-end text-right text-xs font-medium text-gray-400">{source.updatedAt}</div>
-      <div className="flex justify-center">
+      <div
+        className="flex justify-center self-stretch py-1.5"
+        onClick={stopRowActivation}
+        onPointerDown={stopRowActivation}
+      >
         {isIndexing ? (
           <RefreshCw className="h-4 w-4 animate-spin text-purple-400" />
         ) : (
-          <span onClick={(e) => e.stopPropagation()}>
-            <Toggle enabled={isOn} onChange={onToggle} disabled={isMutating} size="sm" />
-          </span>
+          <Toggle enabled={isOn} onChange={onToggle} disabled={isMutating} size="sm" />
         )}
       </div>
-      <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="flex justify-end self-stretch py-1.5"
+        onClick={stopRowActivation}
+        onPointerDown={stopRowActivation}
+      >
         <Dropdown
           trigger={
             <button className="flex h-6 w-3.5 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-600">⋮</button>

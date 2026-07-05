@@ -7,14 +7,8 @@ export default function Footer() {
       <div className="mx-auto max-w-[1140px] px-6">
         <div className="mb-[38px] grid grid-cols-[1.4fr_1fr_1fr_1fr] gap-[30px] max-[900px]:grid-cols-1 max-[900px]:gap-[26px]">
           <div>
-            <div className="mb-3.5 flex items-center gap-2.5 text-[19px] font-extrabold text-white">
-              <span className="inline-flex items-center gap-1.5">
-                <svg width="22" height="22" viewBox="0 0 32 32" fill="none">
-                  <circle cx="16" cy="16" r="16" fill="#2f7bf6"/>
-                  <path d="M10 16l4 4 8-8" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-                Callbee
-              </span>
+            <div className="mb-3.5 text-[19px] font-extrabold tracking-[-0.03em] text-white">
+              Call bee
             </div>
             <p className="max-w-[280px] text-[13.5px] leading-[1.75] text-[#8a90a0]">
               Callbee는 인공지능 기술을 통해 비즈니스 운영 방식을 혁신합니다. 고객 상담, 예약 관리, 업무 자동화를 하나의 플랫폼에서 경험하세요.

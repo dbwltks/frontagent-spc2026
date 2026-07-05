@@ -1,5 +1,5 @@
 import type { User } from "@supabase/supabase-js";
-import { Check, Link2, MoreVertical, Sparkles, Star } from "lucide-react";
+import { Check, Link2, Sparkles, Star } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { getOrganizationId } from "../../../lib/organization";
 import type { Conversation, ConversationMessage } from "../types";
@@ -10,7 +10,8 @@ import {
   InternalNote,
 } from "@/components/ui/ChatBubbles";
 import { Composer } from "./Composer";
-import { fetchConversationMessages, parseUtcTimestamp, sendAdminMessage } from "./conversationsApi";
+import { ConversationHistoryMenu } from "./ConversationHistoryMenu";
+import { fetchConversationMessages, formatAgentBrandText, parseUtcTimestamp, sendAdminMessage } from "./conversationsApi";
 
 function AutoScrollAnchor({ messageCount }: { messageCount: number }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -28,7 +29,7 @@ function formatMessageTime(value?: string | null) {
 }
 
 function formatConversationText(text: string) {
-  return text.replace(/\bfront agent\b/gi, "Callbee").replace(/\balf voice\b/gi, "Callbee");
+  return formatAgentBrandText(text);
 }
 
 const MESSAGE_POLL_INTERVAL_MS = 4000;
@@ -116,11 +117,13 @@ export function ConversationPanel({
   message,
   onMessageChange,
   user,
+  onDeleted,
 }: {
   conversation: Conversation;
   message: string;
   onMessageChange: (value: string) => void;
   user: User;
+  onDeleted?: () => void;
 }) {
   const [isSending, setIsSending] = useState(false);
   const [refreshSignal, setRefreshSignal] = useState(0);
@@ -153,7 +156,14 @@ export function ConversationPanel({
         <div className="flex items-center gap-4 text-gray-500">
           <Sparkles className="h-5 w-5" />
           <Link2 className="h-5 w-5" />
-          <MoreVertical className="h-5 w-5" />
+          {onDeleted && (
+            <ConversationHistoryMenu
+              conversationId={conversation.id}
+              user={user}
+              historyLabel="채팅 내역 삭제"
+              onDeleted={onDeleted}
+            />
+          )}
           <button className="flex items-center gap-2 rounded-full border border-gray-200 px-4 py-2 text-sm font-bold text-gray-900">
             <Check className="h-4 w-4" />
             종료

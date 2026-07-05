@@ -162,7 +162,7 @@ const heroTextAreaClass =
 const heroCenterClass =
   "flex w-full items-center justify-center bg-white [font-family:'Pretendard',-apple-system,sans-serif]";
 const heroInnerClass =
-  "mt-[160px] flex w-full min-w-0 max-w-[1600px] flex-col items-center text-center";
+  "mt-[160px] max-[600px]:mt-[100px] flex w-full min-w-0 max-w-[1600px] flex-col items-center text-center";
 const headlineClass =
   "m-0 w-full max-w-[1600px] text-center text-[clamp(42px,6.4vw,78px)] font-bold leading-[1.22] tracking-[-0.03em] text-[#191919] [overflow-wrap:break-word] [word-break:keep-all] max-[600px]:text-[38px] max-[600px]:leading-[1.24]";
 const headlinePillClass =

@@ -4,11 +4,8 @@ export function Footer() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-16">
           <div className="col-span-1 md:col-span-1 text-left">
-            <div className="flex items-center gap-2 mb-6">
-              <div className="w-8 h-8 rounded-[10px] bg-gray-900 flex items-center justify-center text-white font-bold text-lg">
-                C
-              </div>
-              <span className="font-bold text-[20px] tracking-tight text-gray-900">Callbee</span>
+            <div className="mb-6 text-[20px] font-extrabold tracking-[-0.03em] text-gray-900">
+              Call bee
             </div>
             <p className="text-[14px] text-gray-500 leading-[1.6] font-medium">
               Callbee는 인공지능 기술을 통해 비즈니스의 운영 방식을 혁신합니다.<br />

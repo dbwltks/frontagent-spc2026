@@ -17,12 +17,20 @@ export function InboxWorkspace({
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [isLoadingConversation, setIsLoadingConversation] = useState(true);
   const [message, setMessage] = useState("");
+  const [listRefreshToken, setListRefreshToken] = useState(0);
 
   const gridTemplateColumns = "76px minmax(420px,600px) minmax(480px,1fr) minmax(280px,320px)";
 
   const handleSelectConversation = (id: string, conversation: Conversation) => {
     setSelectedId(id);
     setSelectedConversation(conversation);
+  };
+
+  const handleDeleteConversation = () => {
+    setSelectedId("");
+    setSelectedConversation(null);
+    setMessage("");
+    setListRefreshToken((value) => value + 1);
   };
 
   const handleLoaded = (conversations: Conversation[]) => {
@@ -46,6 +54,7 @@ export function InboxWorkspace({
             onSelect={handleSelectConversation}
             onLoaded={handleLoaded}
             user={user}
+            refreshToken={listRefreshToken}
           />
           {isLoadingConversation ? (
             <div className="col-span-2 grid grid-cols-[1fr_280px] gap-2">
@@ -79,6 +88,7 @@ export function InboxWorkspace({
                 message={message}
                 onMessageChange={setMessage}
                 user={user}
+                onDeleted={handleDeleteConversation}
               />
               <RightPanel conversation={selectedConversation} />
             </>

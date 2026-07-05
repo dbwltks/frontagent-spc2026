@@ -4,13 +4,13 @@ import {
   CalendarClock,
   Check,
   ChevronDown,
+  ChevronRight,
   Headphones,
   Inbox,
   Mail,
   Megaphone,
   MessageCircle,
   Mic,
-  MoreVertical,
   PanelRight,
   Phone,
   Plus,
@@ -34,6 +34,7 @@ import type {
   Reservation,
   Service,
   ServiceAdminItem,
+  ServiceCatalogItem,
   ServiceItem,
   ServiceItemOption,
   ServicePriceCalculation,
@@ -50,6 +51,8 @@ import {
   TimelineItem,
 } from "@/components/ui/DashboardUI";
 import { Avatar } from "@/components/ui/Avatar";
+import { Card } from "@/components/ui/Card";
+import { AlertDialog } from "@/components/ui/AlertDialog";
 import { ActivityDivider, AgentMessage } from "@/components/ui/ChatBubbles";
 import { Modal, ModalActions } from "@/components/ui/Modal";
 import { TabRow } from "@/components/ui/TabRow";
@@ -71,6 +74,7 @@ import {
   fetchAvailableSlots,
   fetchBookingSetting,
   fetchPendingServices,
+  fetchPendingServiceItems,
   fetchReservations,
   fetchReviewServices,
   fetchServices,
@@ -86,7 +90,8 @@ import {
   updateServiceItemOption,
 } from "./reservationsApi";
 import type { ServiceInput, ServiceItemInput, ServiceItemOptionInput } from "./reservationsApi";
-import { fetchConversationMessages, fetchConversations, parseUtcTimestamp } from "./conversationsApi";
+import { fetchConversationMessages, fetchConversations, formatAgentBrandText, parseUtcTimestamp } from "./conversationsApi";
+import { ConversationHistoryMenu } from "./ConversationHistoryMenu";
 import type { Conversation, ConversationMessage } from "../types";
 
 const CALLS_POLL_INTERVAL_MS = 5000;
@@ -107,7 +112,7 @@ function formatCallMessageTime(value?: string | null) {
 }
 
 function formatConversationText(text: string) {
-  return text.replace(/\bfront agent\b/gi, "Callbee").replace(/\balf voice\b/gi, "Callbee");
+  return formatAgentBrandText(text);
 }
 
 function callToAiCall(call: Conversation): AiCall {
@@ -135,7 +140,27 @@ function callToAiCall(call: Conversation): AiCall {
     nextAction: "",
     task: "",
     canTakeOver: status === "ai-answering",
+    callStartedAt: call.callStartedAt ?? null,
+    callEndedAt: call.callEndedAt ?? null,
   };
+}
+
+function useLiveCallDuration(call: AiCall) {
+  const isLive = call.status === "ai-answering";
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!isLive || !call.callStartedAt) return;
+    const intervalId = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(intervalId);
+  }, [isLive, call.callStartedAt]);
+
+  if (!isLive) return call.duration;
+  if (!call.callStartedAt) return call.duration;
+
+  const startedAt = parseUtcTimestamp(call.callStartedAt).getTime();
+  const seconds = Math.max(0, Math.floor((now - startedAt) / 1000));
+  return formatCallDurationLabel(seconds);
 }
 
 const aiCalls: AiCall[] = [
@@ -1209,6 +1234,30 @@ function formatCatalogPrice(price?: number | null, currency?: string | null) {
   return `${price.toLocaleString("ko-KR")}${currency === "KRW" || !currency ? "원" : ` ${currency}`}`;
 }
 
+const SERVICE_FIELD_LABELS: Record<string, string> = {
+  name: "서비스명",
+  price: "가격",
+  duration_minutes: "소요 시간",
+  description: "설명",
+};
+
+function formatServiceFieldLabel(field: string) {
+  return SERVICE_FIELD_LABELS[field] ?? field;
+}
+
+function formatApprovalStatusLabel(status?: string | null) {
+  if (status === "pending") return "승인대기";
+  if (status === "approved") return "승인됨";
+  if (status === "rejected") return "거절됨";
+  return status ?? "-";
+}
+
+function formatSyncStatusLabel(status?: string | null) {
+  if (status === "needs_review") return "변경검토";
+  if (status === "synced") return "동기화됨";
+  return status ?? "-";
+}
+
 type ServiceView = "active" | "pending" | "review" | "stale";
 type ServiceModalMode =
   | "create-service"
@@ -1248,6 +1297,8 @@ function ServicesMain({
   const [modalMode, setModalMode] = useState<ServiceModalMode | null>(null);
   const [editingServiceItem, setEditingServiceItem] = useState<ServiceItem | null>(null);
   const [editingOption, setEditingOption] = useState<ServiceItemOption | null>(null);
+  const [adminCatalogItems, setAdminCatalogItems] = useState<ServiceCatalogItem[]>([]);
+  const [isAdminCatalogLoading, setIsAdminCatalogLoading] = useState(false);
   const organizationId = getOrganizationId(user);
 
   const reloadServiceCatalog = useCallback(
@@ -1362,6 +1413,31 @@ function ServicesMain({
       isMounted = false;
     };
   }, [organizationId, selectedServiceItemId]);
+
+  useEffect(() => {
+    if (serviceView === "active" || !selectedAdminItemId) {
+      setAdminCatalogItems([]);
+      return;
+    }
+
+    let isMounted = true;
+    setIsAdminCatalogLoading(true);
+
+    fetchPendingServiceItems(organizationId, selectedAdminItemId)
+      .then((items) => {
+        if (isMounted) setAdminCatalogItems(items);
+      })
+      .catch(() => {
+        if (isMounted) setAdminCatalogItems([]);
+      })
+      .finally(() => {
+        if (isMounted) setIsAdminCatalogLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [organizationId, serviceView, selectedAdminItemId]);
 
   const selectedServiceItem = serviceItems.find((item) => item.id === selectedServiceItemId) ?? null;
   const selectedAdminItems =
@@ -1705,21 +1781,34 @@ function ServicesMain({
           : undefined,
   }));
 
-  const adminItems: OperationsItem[] = selectedAdminItems.map((item) => ({
-    id: item.id,
-    title: item.name ?? item.current?.name ?? item.suggested?.name ?? "서비스",
-    owner: item.sourceType ?? "knowledge",
-    description:
-      serviceView === "pending"
-        ? `${item.missingFields?.length ?? 0}개 필드 확인 필요`
-        : serviceView === "review"
-          ? `${item.changedFields?.join(", ") || "변경 필드 없음"}`
-          : item.message ?? "원본에서 더 이상 발견되지 않습니다.",
-    status: serviceView === "pending" ? "승인대기" : serviceView === "review" ? "변경검토" : "미사용",
-    tone: serviceView === "pending" ? "amber" : serviceView === "review" ? "blue" : "gray",
-    meta: item.lastExtractedAt ? new Date(item.lastExtractedAt).toLocaleString("ko-KR") : "추출 정보 없음",
-    avatar: (item.name ?? "서")[0],
-  }));
+  const adminItems: OperationsItem[] = selectedAdminItems.map((item) => {
+    const isSelected = item.id === selectedAdminItem?.id;
+    const catalogCount = isSelected ? adminCatalogItems.length : undefined;
+    const optionCount = isSelected
+      ? adminCatalogItems.reduce((sum, catalogItem) => sum + catalogItem.options.length, 0)
+      : undefined;
+
+    return {
+      id: item.id,
+      title: item.name ?? item.current?.name ?? item.suggested?.name ?? "서비스",
+      owner: item.sourceType ?? "knowledge",
+      description:
+        serviceView === "pending"
+          ? `${item.missingFields?.length ?? 0}개 필드 확인 · 아이템 ${catalogCount ?? "?"}개`
+          : serviceView === "review"
+            ? `${item.changedFields?.join(", ") || "변경 필드 없음"} · 아이템 ${catalogCount ?? "?"}개`
+            : item.message ?? "원본에서 더 이상 발견되지 않습니다.",
+      status: serviceView === "pending" ? "승인대기" : serviceView === "review" ? "변경검토" : "미사용",
+      tone: serviceView === "pending" ? "amber" : serviceView === "review" ? "blue" : "gray",
+      meta:
+        catalogCount !== undefined && optionCount !== undefined
+          ? `아이템 ${catalogCount} · 옵션 ${optionCount}`
+          : item.lastExtractedAt
+            ? new Date(item.lastExtractedAt).toLocaleString("ko-KR")
+            : "추출 정보 없음",
+      avatar: (item.name ?? "서")[0],
+    };
+  });
 
   const items = serviceView === "active" ? activeItems : adminItems;
 
@@ -1839,13 +1928,17 @@ function ServicesMain({
             <ServiceAdminDetail
               view={serviceView}
               item={selectedAdminItem}
+              catalogItems={adminCatalogItems}
+              isCatalogLoading={isAdminCatalogLoading}
               actionError={actionError}
               isMutating={isMutating}
+              organizationId={organizationId}
               onApprove={() => setModalMode("approve")}
               onReject={handleReject}
               onApply={() => setModalMode("apply")}
               onIgnore={handleIgnorePending}
               onDeactivate={handleDeactivateStale}
+              onRefreshCatalog={() => reloadServiceCatalog(selectedAdminItem.id)}
             />
           ) : (
             <div className="space-y-4">
@@ -2290,108 +2383,481 @@ function CollapsiblePanel({
   );
 }
 
+function ServiceItemCard({
+  catalogItem,
+  organizationId,
+  onRefresh,
+}: {
+  catalogItem: ServiceCatalogItem;
+  organizationId: string;
+  onRefresh: () => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState(false);
+  const [itemName, setItemName] = useState(catalogItem.name);
+  const [itemDesc, setItemDesc] = useState(catalogItem.description ?? "");
+  const [itemPrice, setItemPrice] = useState(String(catalogItem.basePrice ?? ""));
+  const [itemDuration, setItemDuration] = useState(String(catalogItem.durationMinutes ?? ""));
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [addingOption, setAddingOption] = useState(false);
+  const [newOptGroup, setNewOptGroup] = useState("");
+  const [newOptValue, setNewOptValue] = useState("");
+  const [newOptPrice, setNewOptPrice] = useState("");
+  const [newOptDuration, setNewOptDuration] = useState("");
+  const [isAddingOpt, setIsAddingOpt] = useState(false);
+
+  const handleDeleteItem = async () => {
+    try {
+      await deleteServiceItem(organizationId, catalogItem.id);
+      onRefresh();
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "삭제 실패");
+    }
+  };
+
+  const handleAddOption = async () => {
+    if (!newOptValue.trim()) return;
+    setIsAddingOpt(true);
+    try {
+      await createServiceItemOption(organizationId, catalogItem.id, {
+        optionGroup: newOptGroup.trim() || "기본",
+        optionValue: newOptValue.trim(),
+        additionalPrice: newOptPrice ? Number(newOptPrice.replace(/,/g, "")) : 0,
+        additionalDuration: newOptDuration ? Number(newOptDuration) : 0,
+      });
+      setNewOptGroup(""); setNewOptValue(""); setNewOptPrice(""); setNewOptDuration("");
+      setAddingOption(false);
+      onRefresh();
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "옵션 추가 실패");
+    } finally {
+      setIsAddingOpt(false);
+    }
+  };
+
+  const handleSaveItem = async () => {
+    if (!itemName.trim()) { setSaveError("이름을 입력해 주세요."); return; }
+    setIsSaving(true); setSaveError(null);
+    try {
+      await updateServiceItem(organizationId, catalogItem.id, {
+        name: itemName.trim(),
+        description: itemDesc.trim() || null,
+        basePrice: itemPrice ? Number(itemPrice.replace(/,/g, "")) : undefined,
+        durationMinutes: itemDuration ? Number(itemDuration) : undefined,
+      });
+      setEditingItem(false);
+      onRefresh();
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "저장 실패");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <Card size="sm" className="min-w-0 overflow-hidden p-0">
+      {/* 아코디언 헤더 */}
+      {/* 헤더 — 항상 표시 */}
+      <div className="flex min-w-0 items-center justify-between gap-4">
+        <button
+          type="button"
+          onClick={() => setIsOpen((o) => !o)}
+          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        >
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="min-w-0 truncate text-[15px] font-bold text-gray-900">{catalogItem.name}</span>
+              <StatusPill tone={catalogItem.approvalStatus === "pending" ? "amber" : "green"}>
+                {formatApprovalStatusLabel(catalogItem.approvalStatus)}
+              </StatusPill>
+            </div>
+            <p className="truncate text-[13px] font-semibold text-gray-500">
+              {formatCatalogPrice(catalogItem.basePrice)}
+              {catalogItem.durationMinutes ? ` · ${catalogItem.durationMinutes}분` : ""}
+              {` · 옵션 ${catalogItem.options.length}개`}
+            </p>
+          </div>
+        </button>
+        <button
+          type="button"
+          onClick={() => setIsOpen((o) => !o)}
+          className="rounded-full p-1.5 text-gray-500 transition-colors hover:bg-gray-100"
+        >
+          <ChevronDown className={`h-5 w-5 stroke-[2.5] transition-transform ${isOpen ? "rotate-180" : ""}`} />
+        </button>
+      </div>
+
+      {/* 펼침 내용 */}
+      {isOpen && (
+        <div className="mt-4 border-t border-gray-100 pl-0 pr-0 pb-1 pt-4 space-y-3">
+          {editingItem ? (
+            <div className="space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1 block text-[12px] font-bold text-gray-500">이름</span>
+                  <input value={itemName} onChange={(e) => setItemName(e.target.value)}
+                    className="w-full rounded-[10px] border border-gray-200 px-3 py-2 text-[13px] font-semibold outline-none focus:border-gray-400" />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[12px] font-bold text-gray-500">설명</span>
+                  <input value={itemDesc} onChange={(e) => setItemDesc(e.target.value)}
+                    className="w-full rounded-[10px] border border-gray-200 px-3 py-2 text-[13px] font-semibold outline-none focus:border-gray-400" />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[12px] font-bold text-gray-500">가격 (원)</span>
+                  <input value={itemPrice} onChange={(e) => setItemPrice(e.target.value)} inputMode="numeric"
+                    className="w-full rounded-[10px] border border-gray-200 px-3 py-2 text-[13px] font-semibold outline-none focus:border-gray-400" />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[12px] font-bold text-gray-500">소요 시간 (분)</span>
+                  <input value={itemDuration} onChange={(e) => setItemDuration(e.target.value)} inputMode="numeric"
+                    className="w-full rounded-[10px] border border-gray-200 px-3 py-2 text-[13px] font-semibold outline-none focus:border-gray-400" />
+                </label>
+              </div>
+              {saveError && <p className="text-[12px] font-semibold text-red-500">{saveError}</p>}
+              <div className="flex gap-2">
+                <Button variant="dark" size="sm" onClick={() => void handleSaveItem()} disabled={isSaving}>저장</Button>
+                <Button variant="secondary" size="sm" onClick={() => { setEditingItem(false); setSaveError(null); }} disabled={isSaving}>취소</Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-start justify-between gap-3">
+              <div className="text-[13px] font-semibold text-gray-500">{catalogItem.description?.trim() || "설명 없음"}</div>
+              <div className="flex shrink-0 gap-1.5">
+                <Button variant="ghost" size="sm" onClick={() => setEditingItem(true)}>수정</Button>
+                <AlertDialog
+                  trigger={<Button variant="danger" size="sm">삭제</Button>}
+                  title={`"${catalogItem.name}" 삭제`}
+                  description="아이템과 하위 옵션이 모두 삭제됩니다."
+                  confirmLabel="삭제"
+                  onConfirm={() => void handleDeleteItem()}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* 옵션 목록 */}
+          <div className="space-y-2 border-t border-gray-100 pt-3">
+            <div className="flex items-center justify-between">
+              <div className="text-[12px] font-extrabold text-gray-400">옵션 ({catalogItem.options.length})</div>
+              <Button variant="ghost" size="sm" onClick={() => setAddingOption((o) => !o)}>
+                <Plus className="h-3 w-3" />추가
+              </Button>
+            </div>
+            {addingOption && (
+              <div className="rounded-[12px] border border-dashed border-gray-200 p-3 space-y-2">
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] font-bold text-gray-400">그룹</span>
+                    <input value={newOptGroup} onChange={(e) => setNewOptGroup(e.target.value)} placeholder="예: 평수"
+                      className="w-full rounded-[8px] border border-gray-200 px-2.5 py-1.5 text-[13px] font-semibold outline-none focus:border-gray-400" />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] font-bold text-gray-400">값 *</span>
+                    <input value={newOptValue} onChange={(e) => setNewOptValue(e.target.value)} placeholder="예: 10평"
+                      className="w-full rounded-[8px] border border-gray-200 px-2.5 py-1.5 text-[13px] font-semibold outline-none focus:border-gray-400" />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] font-bold text-gray-400">추가 가격 (원)</span>
+                    <input value={newOptPrice} onChange={(e) => setNewOptPrice(e.target.value)} inputMode="numeric"
+                      className="w-full rounded-[8px] border border-gray-200 px-2.5 py-1.5 text-[13px] font-semibold outline-none focus:border-gray-400" />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] font-bold text-gray-400">추가 시간 (분)</span>
+                    <input value={newOptDuration} onChange={(e) => setNewOptDuration(e.target.value)} inputMode="numeric"
+                      className="w-full rounded-[8px] border border-gray-200 px-2.5 py-1.5 text-[13px] font-semibold outline-none focus:border-gray-400" />
+                  </label>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="dark" size="sm" onClick={() => void handleAddOption()} disabled={isAddingOpt || !newOptValue.trim()}>추가</Button>
+                  <Button variant="secondary" size="sm" onClick={() => setAddingOption(false)}>취소</Button>
+                </div>
+              </div>
+            )}
+            {catalogItem.options.map((option) => (
+              <ServiceOptionRow key={option.id} option={option} organizationId={organizationId} onRefresh={onRefresh} />
+            ))}
+            {catalogItem.options.length === 0 && !addingOption && (
+              <div className="text-[13px] font-semibold text-gray-400">옵션 없음</div>
+            )}
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function ServiceOptionRow({
+  option,
+  organizationId,
+  onRefresh,
+}: {
+  option: ServiceItemOption;
+  organizationId: string;
+  onRefresh: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [group, setGroup] = useState(option.optionGroup ?? "");
+  const [value, setValue] = useState(option.optionValue ?? "");
+  const [addPrice, setAddPrice] = useState(String(option.additionalPrice ?? ""));
+  const [addDuration, setAddDuration] = useState(String(option.additionalDuration ?? ""));
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const handleDeleteOption = async () => {
+    try {
+      await deleteServiceItemOption(organizationId, option.id);
+      onRefresh();
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "삭제 실패");
+    }
+  };
+
+  const handleSave = async () => {
+    setIsSaving(true); setSaveError(null);
+    try {
+      await updateServiceItemOption(organizationId, option.id, {
+        optionGroup: group.trim() || option.optionGroup,
+        optionValue: value.trim() || option.optionValue,
+        additionalPrice: addPrice ? Number(addPrice.replace(/,/g, "")) : undefined,
+        additionalDuration: addDuration ? Number(addDuration) : undefined,
+      });
+      setEditing(false);
+      onRefresh();
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "저장 실패");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <div className="rounded-[12px] border border-gray-200 bg-white p-3 space-y-2">
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="block">
+            <span className="mb-1 block text-[11px] font-bold text-gray-400">그룹</span>
+            <input value={group} onChange={(e) => setGroup(e.target.value)}
+              className="w-full rounded-[8px] border border-gray-200 px-2.5 py-1.5 text-[13px] font-semibold outline-none focus:border-gray-400" />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[11px] font-bold text-gray-400">값</span>
+            <input value={value} onChange={(e) => setValue(e.target.value)}
+              className="w-full rounded-[8px] border border-gray-200 px-2.5 py-1.5 text-[13px] font-semibold outline-none focus:border-gray-400" />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[11px] font-bold text-gray-400">추가 가격 (원)</span>
+            <input value={addPrice} onChange={(e) => setAddPrice(e.target.value)} inputMode="numeric"
+              className="w-full rounded-[8px] border border-gray-200 px-2.5 py-1.5 text-[13px] font-semibold outline-none focus:border-gray-400" />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[11px] font-bold text-gray-400">추가 시간 (분)</span>
+            <input value={addDuration} onChange={(e) => setAddDuration(e.target.value)} inputMode="numeric"
+              className="w-full rounded-[8px] border border-gray-200 px-2.5 py-1.5 text-[13px] font-semibold outline-none focus:border-gray-400" />
+          </label>
+        </div>
+        {saveError && <p className="text-[11px] font-semibold text-red-500">{saveError}</p>}
+        <div className="flex gap-2">
+          <Button variant="dark" size="sm" onClick={() => void handleSave()} disabled={isSaving}>저장</Button>
+          <Button variant="secondary" size="sm" onClick={() => { setEditing(false); setSaveError(null); }} disabled={isSaving}>취소</Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <Card size="sm" className="flex items-center justify-between p-2.5">
+      <div className="min-w-0">
+        <span className="text-[13px] font-bold text-gray-800">{option.optionGroup} · {option.optionValue}</span>
+        <span className="ml-2 text-[12px] font-semibold text-gray-400">
+          +{formatCatalogPrice(option.additionalPrice)}
+          {option.additionalDuration ? ` · +${option.additionalDuration}분` : ""}
+        </span>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <StatusPill tone={option.approvalStatus === "pending" ? "amber" : "green"}>
+          {formatApprovalStatusLabel(option.approvalStatus)}
+        </StatusPill>
+        <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>수정</Button>
+        <AlertDialog
+          trigger={<Button variant="danger" size="sm">삭제</Button>}
+          title={`"${option.optionValue}" 삭제`}
+          description="이 옵션이 삭제됩니다."
+          confirmLabel="삭제"
+          onConfirm={() => void handleDeleteOption()}
+        />
+      </div>
+    </Card>
+  );
+}
+
 function ServiceAdminDetail({
   view,
   item,
+  catalogItems,
+  isCatalogLoading,
   actionError,
   isMutating,
+  organizationId,
   onApprove,
   onReject,
   onApply,
   onIgnore,
   onDeactivate,
+  onRefreshCatalog,
 }: {
   view: ServiceView;
   item: ServiceAdminItem;
+  catalogItems: ServiceCatalogItem[];
+  isCatalogLoading: boolean;
   actionError: string | null;
   isMutating: boolean;
+  organizationId: string;
   onApprove: () => void;
   onReject: () => void;
   onApply: () => void;
   onIgnore: () => void;
   onDeactivate: () => void;
+  onRefreshCatalog: () => void;
 }) {
   const current = item.current;
   const suggested = item.suggested;
+  const display = view === "review" && suggested ? suggested : current;
+  const aiReason =
+    typeof item.ai?.reason === "string"
+      ? item.ai.reason
+      : typeof item.ai?.raw_payload === "object" &&
+          item.ai?.raw_payload &&
+          typeof (item.ai.raw_payload as Record<string, unknown>).reason === "string"
+        ? String((item.ai.raw_payload as Record<string, unknown>).reason)
+        : null;
+  const aiConfidence = typeof item.ai?.confidence === "number" ? item.ai.confidence : null;
+  const totalOptions = catalogItems.reduce((sum, catalogItem) => sum + catalogItem.options.length, 0);
 
   return (
-    <div>
-      <div className="mb-5 rounded-[20px] bg-[#f7f7f7] p-5">
-        <div className="mb-2 flex items-center justify-between gap-3">
-          <h3 className="text-[22px] font-bold">{item.name ?? current?.name ?? suggested?.name ?? "서비스"}</h3>
-          <StatusPill tone={view === "pending" ? "amber" : view === "review" ? "blue" : "gray"}>
-            {view === "pending" ? "승인대기" : view === "review" ? "변경검토" : "미사용"}
-          </StatusPill>
+    <div className="space-y-4">
+      {/* 헤더 + 액션 버튼 */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <h3 className="text-[22px] font-extrabold">{item.name ?? display?.name ?? "서비스"}</h3>
+            <StatusPill tone={view === "pending" ? "amber" : view === "review" ? "blue" : "gray"}>
+              {view === "pending" ? "승인대기" : view === "review" ? "변경검토" : "미사용"}
+            </StatusPill>
+          </div>
+          <p className="mt-1.5 text-[13px] font-semibold leading-relaxed text-gray-500">
+            {display?.description?.trim() || "설명 없음"}
+          </p>
         </div>
-        <p className="text-[13px] font-semibold leading-relaxed text-gray-500">
-          {item.message ?? "지식 문서에서 추출된 서비스 정보를 API 기준으로 검토합니다."}
-        </p>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          {view === "pending" && (
+            <>
+              <Button variant="danger" size="lg" onClick={onReject} disabled={isMutating}>거절</Button>
+              <Button variant="dark" size="lg" onClick={onApprove} disabled={isMutating}>승인/수정</Button>
+            </>
+          )}
+          {view === "review" && (
+            <>
+              <Button variant="secondary" size="lg" onClick={onIgnore} disabled={isMutating}>무시</Button>
+              <Button variant="dark" size="lg" onClick={onApply} disabled={isMutating}>변경 반영</Button>
+            </>
+          )}
+          {view === "stale" && (
+            <Button variant="danger" size="lg" onClick={onDeactivate} disabled={isMutating}>비활성화</Button>
+          )}
+        </div>
       </div>
+
       {actionError && (
-        <div className="mb-4 rounded-[16px] bg-red-50 p-3 text-[13px] font-semibold text-red-600">
-          {actionError}
+        <div className="rounded-[16px] bg-red-50 p-3 text-[13px] font-semibold text-red-600">{actionError}</div>
+      )}
+
+      {Boolean(item.missingFields?.length) && (
+        <div className="rounded-[16px] bg-amber-50 p-4 text-[13px] font-semibold text-amber-700">
+          승인 전 확인 필요: {item.missingFields?.map(formatServiceFieldLabel).join(", ")}
         </div>
       )}
-      <div className="mb-5 grid gap-3 sm:grid-cols-2">
-        <InfoCard title="현재 가격" meta="current" text={formatCatalogPrice(current?.price, current?.currency)} />
-        <InfoCard
-          title="현재 소요"
-          meta="current"
-          text={current?.durationMinutes ? `${current.durationMinutes}분` : "미설정"}
-        />
-        {suggested && (
-          <>
-            <InfoCard title="제안 가격" meta="suggested" text={formatCatalogPrice(suggested.price, suggested.currency)} />
-            <InfoCard
-              title="제안 소요"
-              meta="suggested"
-              text={suggested.durationMinutes ? `${suggested.durationMinutes}분` : "미설정"}
-            />
-          </>
-        )}
-      </div>
-      {Boolean(item.missingFields?.length) && (
-        <div className="mb-5 rounded-[16px] bg-amber-50 p-4 text-[13px] font-semibold text-amber-700">
-          누락 필드: {item.missingFields?.join(", ")}
+      {view === "pending" && item.canApprove === false && (
+        <div className="rounded-[16px] bg-amber-50 p-4 text-[13px] font-semibold text-amber-700">
+          가격·소요 시간 등 필수 값이 비어 있습니다. 「승인/수정」에서 입력한 뒤 승인해 주세요.
         </div>
       )}
       {Boolean(item.changedFields?.length) && (
-        <div className="mb-5 rounded-[16px] bg-blue-50 p-4 text-[13px] font-semibold text-blue-700">
-          변경 필드: {item.changedFields?.join(", ")}
+        <div className="rounded-[16px] bg-blue-50 p-4 text-[13px] font-semibold text-blue-700">
+          변경 필드: {item.changedFields?.map(formatServiceFieldLabel).join(", ")}
         </div>
       )}
-      <div className="mb-5 flex flex-wrap gap-2">
-        {view === "pending" && (
-          <>
-            <Button variant="dark" onClick={onApprove} disabled={isMutating}>
-              승인/수정
-            </Button>
-            <Button variant="danger" onClick={onReject} disabled={isMutating}>
-              거절
-            </Button>
-          </>
+
+      {/* 요약 정보 */}
+      <div className="flex flex-wrap gap-2">
+        <span className="rounded-full bg-gray-100 px-3 py-1.5 text-[13px] font-semibold text-gray-700">
+          {formatCatalogPrice(current?.price, current?.currency)}
+        </span>
+        {current?.durationMinutes && (
+          <span className="rounded-full bg-gray-100 px-3 py-1.5 text-[13px] font-semibold text-gray-700">
+            {current.durationMinutes}분
+          </span>
         )}
-        {view === "review" && (
-          <>
-            <Button variant="dark" onClick={onApply} disabled={isMutating}>
-              변경 반영
-            </Button>
-            <Button variant="secondary" onClick={onIgnore} disabled={isMutating}>
-              무시
-            </Button>
-          </>
+        <span className="rounded-full bg-gray-100 px-3 py-1.5 text-[13px] font-semibold text-gray-700">
+          아이템 {catalogItems.length}개
+        </span>
+        <span className="rounded-full bg-gray-100 px-3 py-1.5 text-[13px] font-semibold text-gray-700">
+          옵션 {totalOptions}개
+        </span>
+        {view === "review" && suggested?.price !== current?.price && (
+          <span className="rounded-full bg-blue-50 px-3 py-1.5 text-[13px] font-semibold text-blue-600">
+            제안 가격 {formatCatalogPrice(suggested?.price, suggested?.currency)}
+          </span>
         )}
-        {view === "stale" && (
-          <Button variant="danger" onClick={onDeactivate} disabled={isMutating}>
-            비활성화
-          </Button>
+        {view === "review" && suggested?.durationMinutes && suggested.durationMinutes !== current?.durationMinutes && (
+          <span className="rounded-full bg-blue-50 px-3 py-1.5 text-[13px] font-semibold text-blue-600">
+            제안 {suggested.durationMinutes}분
+          </span>
         )}
       </div>
+      {view === "review" && suggested?.description && suggested.description !== current?.description && (
+        <div className="rounded-[14px] bg-blue-50 px-4 py-3 text-[13px] font-semibold text-blue-700">
+          제안 설명: {suggested.description}
+        </div>
+      )}
+      {item.message && (
+        <div className="rounded-[14px] bg-[#f7f7f7] px-4 py-3 text-[13px] font-semibold text-gray-600">{item.message}</div>
+      )}
+
+      {/* 서비스 아이템 아코디언 카드 */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-2 px-1">
+          <Tag className="h-4 w-4 text-blue-500" />
+          <span className="text-[14px] font-extrabold text-gray-700">서비스 아이템 ({catalogItems.length})</span>
+        </div>
+        {isCatalogLoading ? (
+          <div className="rounded-[16px] bg-[#f7f7f7] px-4 py-5 text-[13px] font-semibold text-gray-400">아이템 불러오는 중...</div>
+        ) : catalogItems.length === 0 ? (
+          <div className="rounded-[16px] bg-[#f7f7f7] px-4 py-5 text-[13px] font-semibold text-gray-400">연결된 아이템이 없습니다.</div>
+        ) : (
+          catalogItems.map((catalogItem) => (
+            <ServiceItemCard
+              key={catalogItem.id}
+              catalogItem={catalogItem}
+              organizationId={organizationId}
+              onRefresh={onRefreshCatalog}
+            />
+          ))
+        )}
+      </div>
+
       <DetailSection title="AI 추출 정보">
-        <DetailRow label="source" value={item.sourceType ?? "-"} />
-        <DetailRow label="sync" value={item.syncStatus ?? "-"} />
-        <DetailRow label="updated" value={item.updatedAt ? new Date(item.updatedAt).toLocaleString("ko-KR") : "-"} />
+        <DetailRow label="출처" value={item.sourceType ?? "-"} />
+        <DetailRow label="동기화 상태" value={formatSyncStatusLabel(item.syncStatus)} />
+        <DetailRow label="신뢰도" value={aiConfidence != null ? `${Math.round(aiConfidence * 100)}%` : "-"} />
+        <DetailRow label="추출 사유" value={aiReason ?? "-"} />
+        <DetailRow
+          label="업데이트"
+          value={item.updatedAt ? new Date(item.updatedAt).toLocaleString("ko-KR") : "-"}
+        />
       </DetailSection>
+
     </div>
   );
 }
@@ -2867,6 +3333,8 @@ function OutboundMain() {
   );
 }
 
+const CALLS_SIDEBAR_WIDTH = 320;
+
 function CallsMain({ user }: { user: User }) {
   const organizationId = getOrganizationId(user);
   const [calls, setCalls] = useState<AiCall[]>([]);
@@ -2930,16 +3398,31 @@ function CallsMain({ user }: { user: User }) {
 
   const activeCallCount = calls.filter((call) => call.status === "ai-answering").length;
   const endedCallCount = calls.filter((call) => call.status === "callback").length;
-  const visibleCalls = calls.filter((call) => {
-    if (statusFilter === "진행중") return call.status === "ai-answering";
-    if (statusFilter === "종료") return call.status === "callback";
-    return true;
-  });
+  const visibleCalls = calls
+    .filter((call) => {
+      if (statusFilter === "진행중") return call.status === "ai-answering";
+      if (statusFilter === "종료") return call.status === "callback";
+      return true;
+    })
+    .sort((a, b) => {
+      if (a.status === "ai-answering" && b.status !== "ai-answering") return -1;
+      if (b.status === "ai-answering" && a.status !== "ai-answering") return 1;
+      return 0;
+    });
   const activeTranscript = activeCall ? callMessages : [];
+
+  function handleDeleteCall(deletedCallId: string) {
+    setCalls((prev) => {
+      const remaining = prev.filter((call) => call.id !== deletedCallId);
+      setSelectedCallId((current) => (current === deletedCallId ? (remaining[0]?.id ?? null) : current));
+      return remaining;
+    });
+    setCallMessages([]);
+  }
 
   return (
     <>
-      <section className="col-span-2 grid h-full min-h-0 min-w-0 overflow-hidden rounded-[20px] bg-[#fafafa]" style={{ gridTemplateColumns: "260px minmax(0,1fr)" }}>
+      <section className="col-span-2 grid h-full min-h-0 min-w-0 overflow-hidden rounded-[20px] bg-[#fafafa]" style={{ gridTemplateColumns: `${CALLS_SIDEBAR_WIDTH}px minmax(0,1fr)` }}>
         {/* 왼쪽: 필터 + 통화 목록 한 컬럼 */}
         <div className="flex h-full min-h-0 flex-col overflow-hidden border-r border-gray-200/80">
           <div className="shrink-0 px-5 py-6">
@@ -2956,8 +3439,13 @@ function CallsMain({ user }: { user: User }) {
                       statusFilter === filter ? "bg-[#e8e8e8] text-gray-950" : "text-gray-500 hover:bg-white/60"
                     }`}
                   >
-                    <span className="flex items-center gap-2">{icon}{filter}</span>
-                    <span className="text-[13px] text-gray-400">{count}</span>
+                    <span className="flex items-center gap-2">
+                      {filter === "진행중" && activeCallCount > 0 ? <LiveCallIndicator size="sm" /> : icon}
+                      {filter}
+                    </span>
+                    <span className={`text-[13px] ${filter === "진행중" && activeCallCount > 0 ? "font-bold text-emerald-600" : "text-gray-400"}`}>
+                      {count}
+                    </span>
                   </button>
                 );
               })}
@@ -2993,7 +3481,12 @@ function CallsMain({ user }: { user: User }) {
         {/* 오른쪽: 통화 상세 */}
         <div className="h-full min-h-0 min-w-0 overflow-hidden">
           {activeCall ? (
-            <ActiveCallPanel call={activeCall} messages={activeTranscript} />
+            <ActiveCallPanel
+              call={activeCall}
+              messages={activeTranscript}
+              user={user}
+              onDeleted={() => handleDeleteCall(activeCall.id)}
+            />
           ) : (
             <div className="flex h-full items-center justify-center text-[14px] font-semibold text-gray-400">
               통화를 선택하면 상세 내용이 표시됩니다.
@@ -3405,7 +3898,19 @@ function CallMetric({
   );
 }
 
+function LiveCallIndicator({ size = "md" }: { size?: "sm" | "md" }) {
+  const dotClass = size === "sm" ? "h-2 w-2" : "h-2.5 w-2.5";
+  return (
+    <span className={`relative inline-flex shrink-0 ${dotClass}`} aria-hidden>
+      <span className={`absolute inline-flex ${dotClass} animate-ping rounded-full bg-emerald-400 opacity-75`} />
+      <span className={`relative inline-flex ${dotClass} rounded-full bg-emerald-500`} />
+    </span>
+  );
+}
+
 function AiCallListItem({ call }: { call: AiCall }) {
+  const isLive = call.status === "ai-answering";
+  const durationLabel = useLiveCallDuration(call);
   const statusTone =
     call.status === "handoff-ready"
       ? "red"
@@ -3417,18 +3922,34 @@ function AiCallListItem({ call }: { call: AiCall }) {
 
   return (
     <div className="flex gap-3">
-      <Avatar label={call.customer[0]} size="lg" />
+      <div className="relative shrink-0">
+        <Avatar label={call.customer[0]} size="lg" />
+        {isLive && (
+          <span className="absolute -right-0.5 -top-0.5">
+            <LiveCallIndicator size="sm" />
+          </span>
+        )}
+      </div>
       <div className="min-w-0 flex-1">
         <div className="mb-1 flex items-center justify-between gap-2">
           <div className="truncate text-[16px] font-bold">
             {call.customer}
             {call.intent && <span className="ml-2 text-[12px] text-gray-400">· {call.intent}</span>}
           </div>
-          <span className="text-[12px] font-bold text-gray-400">{call.duration}</span>
+          <span className={`shrink-0 text-[12px] font-bold ${isLive ? "text-emerald-600" : "text-gray-400"}`}>
+            {durationLabel}
+          </span>
         </div>
         <p className="truncate text-[13px] font-semibold text-gray-500">{call.summary}</p>
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          <StatusPill tone={statusTone}>{callStatusLabel[call.status]}</StatusPill>
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {isLive ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700">
+              <LiveCallIndicator size="sm" />
+              통화중
+            </span>
+          ) : (
+            <StatusPill tone={statusTone}>{callStatusLabel[call.status]}</StatusPill>
+          )}
           {call.task && (
             <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-bold text-gray-500">
               {call.task}
@@ -3440,7 +3961,17 @@ function AiCallListItem({ call }: { call: AiCall }) {
   );
 }
 
-function ActiveCallPanel({ call, messages = [] }: { call: AiCall; messages?: ConversationMessage[] }) {
+function ActiveCallPanel({
+  call,
+  messages = [],
+  user,
+  onDeleted,
+}: {
+  call: AiCall;
+  messages?: ConversationMessage[];
+  user: User;
+  onDeleted: () => void;
+}) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fallbackMessages: ConversationMessage[] = Array.isArray(call.transcript)
     ? call.transcript.map((line, index) => {
@@ -3479,7 +4010,12 @@ function ActiveCallPanel({ call, messages = [] }: { call: AiCall; messages?: Con
         </div>
         <div className="flex shrink-0 items-center gap-4 text-gray-500">
           <Volume2 className="h-5 w-5" />
-          <MoreVertical className="h-5 w-5" />
+          <ConversationHistoryMenu
+            conversationId={call.id}
+            user={user}
+            historyLabel="통화 내역 삭제"
+            onDeleted={onDeleted}
+          />
           <StatusPill tone={call.canTakeOver ? "blue" : "green"}>{callStatusLabel[call.status]}</StatusPill>
         </div>
       </div>

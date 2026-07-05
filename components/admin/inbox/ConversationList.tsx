@@ -113,11 +113,13 @@ export function ConversationList({
   onSelect,
   onLoaded,
   user,
+  refreshToken = 0,
 }: {
   selectedId: string;
   onSelect: (id: string, conversation: Conversation) => void;
   onLoaded?: (conversations: Conversation[]) => void;
   user: User;
+  refreshToken?: number;
 }) {
   const [selectedInboxView, setSelectedInboxView] =
     useState<InboxViewId>("all");
@@ -155,7 +157,7 @@ export function ConversationList({
       isMounted = false;
       window.clearInterval(intervalId);
     };
-  }, [organizationId]);
+  }, [organizationId, refreshToken]);
 
   // 실제 데이터가 있으면 목업 숨김
   const conversations = useMemo(

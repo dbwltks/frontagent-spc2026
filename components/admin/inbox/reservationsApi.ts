@@ -5,6 +5,7 @@ import type {
   ReservationStatus,
   Service,
   ServiceAdminItem,
+  ServiceCatalogItem,
   ServiceItem,
   ServiceItemOption,
   ServicePriceCalculation,
@@ -68,9 +69,13 @@ type ServiceItemRecord = {
   base_price?: number | null;
   duration_minutes?: number | null;
   is_available?: boolean | null;
+  approval_status?: string | null;
+  sync_status?: string | null;
+  pending_payload?: Record<string, unknown> | null;
   raw_payload?: Record<string, unknown> | null;
   created_at?: string | null;
   updated_at?: string | null;
+  options?: ServiceItemOptionRecord[];
 };
 
 type ServiceItemOptionRecord = {
@@ -83,6 +88,9 @@ type ServiceItemOptionRecord = {
   additional_price?: number | null;
   additional_duration?: number | null;
   is_available?: boolean | null;
+  approval_status?: string | null;
+  sync_status?: string | null;
+  pending_payload?: Record<string, unknown> | null;
   raw_payload?: Record<string, unknown> | null;
   created_at?: string | null;
   updated_at?: string | null;
@@ -227,6 +235,9 @@ function mapServiceItemRecord(record: ServiceItemRecord): ServiceItem {
     basePrice: record.base_price ?? 0,
     durationMinutes: record.duration_minutes ?? 0,
     isAvailable: record.is_available ?? true,
+    approvalStatus: record.approval_status,
+    syncStatus: record.sync_status,
+    pendingPayload: record.pending_payload,
     rawPayload: record.raw_payload,
     createdAt: record.created_at,
     updatedAt: record.updated_at,
@@ -244,9 +255,19 @@ function mapServiceItemOptionRecord(record: ServiceItemOptionRecord): ServiceIte
     additionalPrice: record.additional_price ?? 0,
     additionalDuration: record.additional_duration ?? 0,
     isAvailable: record.is_available ?? true,
+    approvalStatus: record.approval_status,
+    syncStatus: record.sync_status,
+    pendingPayload: record.pending_payload,
     rawPayload: record.raw_payload,
     createdAt: record.created_at,
     updatedAt: record.updated_at,
+  };
+}
+
+function mapServiceCatalogItemRecord(record: ServiceItemRecord): ServiceCatalogItem {
+  return {
+    ...mapServiceItemRecord(record),
+    options: (record.options ?? []).map(mapServiceItemOptionRecord),
   };
 }
 
@@ -349,7 +370,7 @@ export async function fetchReservations(organizationId: string, limit = 100) {
 
 export async function fetchServices(organizationId: string) {
   const response = await fetch(
-    `${getAgentApiBaseUrl()}/services?organization_id=${encodeURIComponent(organizationId)}`,
+    `${getAgentApiBaseUrl()}/services?organization_id=${encodeURIComponent(organizationId)}&include_inactive=true`,
   );
 
   if (!response.ok) {
@@ -407,6 +428,24 @@ export async function fetchServiceItems(organizationId: string, serviceId: strin
 
   const payload = (await response.json()) as { items?: ServiceItemRecord[] };
   return (payload.items ?? []).map(mapServiceItemRecord);
+}
+
+export async function fetchPendingServiceItems(organizationId: string, serviceId?: string) {
+  const params = new URLSearchParams({
+    organization_id: organizationId,
+    include_options: "true",
+    include_needs_review: "true",
+  });
+  if (serviceId) params.set("service_id", serviceId);
+
+  const response = await fetch(`${getAgentApiBaseUrl()}/services/items/pending?${params}`);
+
+  if (!response.ok) {
+    throw new Error(await readAgentApiError(response));
+  }
+
+  const payload = (await response.json()) as { items?: ServiceItemRecord[] };
+  return (payload.items ?? []).map(mapServiceCatalogItemRecord);
 }
 
 export async function fetchServiceItemOptions(organizationId: string, serviceItemId: string) {
