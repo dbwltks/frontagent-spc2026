@@ -212,7 +212,7 @@ const HERO_SCENARIOS = [
   },
   {
     gradient:
-      "linear-gradient(135deg, #09ff00 0%, #fcbcbc 30%, #f870d6 65%, #5dc784 100%)",
+      "linear-gradient(135deg, #818cf8 0%, #a78bfa 30%, #f472b6 65%, #fb923c 100%)",
     question: "오늘 저녁 6시에 4명 예약되나요?",
     answer: [
       "네, 오늘 18시에 4인 테이블 예약 가능합니다.",
@@ -223,7 +223,7 @@ const HERO_SCENARIOS = [
   },
   {
     gradient:
-      "linear-gradient(135deg, #55ddf5 0%, #e93d3d 30%, #c4eb16 65%, #5dc784 100%)",
+      "linear-gradient(135deg, #22d3ee 0%, #818cf8 30%, #a78bfa 65%, #f0abfc 100%)",
     question: "이번 주말에 펌 하려는데 빈 시간 있나요?",
     answer: [
       "토요일은 오후 1시, 일요일은 오전 11시에 가능합니다.",

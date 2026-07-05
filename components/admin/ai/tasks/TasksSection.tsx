@@ -244,18 +244,11 @@ export function TasksSection({
       ) : (
       <div className="grid gap-3">
         {taskFlows.map((task) => (
-          <Card key={task.id} size="sm">
+          <Card key={task.id} size="sm" className="min-w-0 overflow-hidden pl-6">
             <div className="flex items-center justify-between gap-4">
               <div className="min-w-0">
                 <div className="mb-1 flex items-center gap-2">
                   <h3 className="truncate text-[16px] font-bold">{task.name}</h3>
-                  <span
-                    className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
-                      task.isEnabled ? "bg-blue-50 text-blue-600" : "bg-[#f2f2f2] text-gray-500"
-                    }`}
-                  >
-                    {task.isEnabled ? "활성" : "비활성"}
-                  </span>
                 </div>
                 <p className="truncate text-[13px] font-semibold text-gray-500">
                   {task.triggerDescription || task.description || "트리거 설명이 없습니다."}

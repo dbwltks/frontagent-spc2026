@@ -2,7 +2,7 @@
 /*  공용                                                               */
 /* ================================================================== */
 
-import { pageSectionShellTall } from './sectionLayout'
+import { pageSectionInnerClass, pageSectionLabelCenterClass, pageSectionLeadCenterClass, pageSectionShellTall, pageSectionTitleClass } from './sectionLayout'
 
 const AVATAR_COLORS: Record<string, string> = {
   배지희: "#E8836B",
@@ -637,11 +637,12 @@ function DetailColumn() {
 export default function Dashboard() {
   return (
     <section className={pageSectionShellTall} id="dashboard">
-    <div className="mx-auto flex w-full max-w-[1400px] min-h-[850px] flex-col justify-center bg-transparent px-10 py-8 max-[860px]:px-5">
-      <h2 className="mx-auto my-2 w-full whitespace-nowrap text-center text-4xl font-extrabold leading-tight tracking-[-0.04em] text-[#0f1118] max-[1100px]:whitespace-normal max-[900px]:text-[28px]">
+    <div className={`${pageSectionInnerClass} min-h-[850px] py-8`}>
+      <div className={pageSectionLabelCenterClass}>대시보드</div>
+      <h2 className={`mx-auto w-full text-center ${pageSectionTitleClass}`}>
         자동화된 상담에 사람의 판단을 더하는 통합 관리 대시보드
       </h2>
-      <p className="mx-auto mb-[30px] w-full max-w-[660px] text-center text-[17px] leading-[1.75] text-[#5b6b8c]">
+      <p className={pageSectionLeadCenterClass}>
         실시간 상담 참여부터 기록, 설정 관리까지 효율적으로 관리하세요.
       </p>
 

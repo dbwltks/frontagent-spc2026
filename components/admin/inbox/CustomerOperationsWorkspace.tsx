@@ -23,6 +23,7 @@ import {
   Volume2,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import useSWR from "swr";
 import { getOrganizationId } from "../../../lib/organization";
 import { conversations } from "../data";
 import type {
@@ -65,6 +66,7 @@ import {
   calculateServicePrice,
   confirmReservation,
   createService,
+  updateBookingSetting,
   createServiceItem,
   createServiceItemOption,
   deactivateService,
@@ -89,7 +91,7 @@ import {
   updateServiceItem,
   updateServiceItemOption,
 } from "./reservationsApi";
-import type { ServiceInput, ServiceItemInput, ServiceItemOptionInput } from "./reservationsApi";
+import type { ServiceInput, ServiceItemInput, ServiceItemOptionInput, BookingSettingInput } from "./reservationsApi";
 import { fetchConversationMessages, fetchConversations, formatAgentBrandText, parseUtcTimestamp } from "./conversationsApi";
 import { ConversationHistoryMenu } from "./ConversationHistoryMenu";
 import type { Conversation, ConversationMessage } from "../types";
@@ -476,6 +478,9 @@ function AppointmentsMain({
   const [reservationFilter, setReservationFilter] = useState<ReservationFilter>("all");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isSettingModalOpen, setIsSettingModalOpen] = useState(false);
+  const [isSettingSubmitting, setIsSettingSubmitting] = useState(false);
+  const [settingError, setSettingError] = useState<string | null>(null);
   const organizationId = getOrganizationId(user);
   useEffect(() => { onLoadingChange(isLoading); }, [isLoading, onLoadingChange]);
   useEffect(() => {
@@ -588,6 +593,7 @@ function AppointmentsMain({
       : items[0]?.id;
 
   return (
+    <>
     <OperationsInboxLayout
       title={viewMeta[appointmentView].title}
       subtitle={
@@ -693,6 +699,7 @@ function AppointmentsMain({
             services={services}
             onDateSelect={onCalendarDateSelect}
             isLoading={isLoading}
+            onOpenSettings={() => setIsSettingModalOpen(true)}
           />
         ) : selectedReservation ? (
           <ReservationProfileDetail
@@ -715,6 +722,28 @@ function AppointmentsMain({
         )
       }
     />
+    {isSettingModalOpen && (
+      <BookingSettingModal
+        bookingSetting={bookingSetting}
+        isSubmitting={isSettingSubmitting}
+        error={settingError}
+        onClose={() => { setIsSettingModalOpen(false); setSettingError(null); }}
+        onSubmit={async (input) => {
+          setIsSettingSubmitting(true);
+          setSettingError(null);
+          try {
+            const updated = await updateBookingSetting(organizationId, input);
+            setBookingSetting(updated);
+            setIsSettingModalOpen(false);
+          } catch (e) {
+            setSettingError(e instanceof Error ? e.message : "저장에 실패했습니다.");
+          } finally {
+            setIsSettingSubmitting(false);
+          }
+        }}
+      />
+    )}
+    </>
   );
 }
 
@@ -757,6 +786,7 @@ function CalendarMainContent({
   services,
   onDateSelect,
   isLoading,
+  onOpenSettings,
 }: {
   bookingSetting: BookingSetting | null;
   availableSlots: AvailableSlot[];
@@ -764,6 +794,7 @@ function CalendarMainContent({
   services: Service[];
   onDateSelect: (date: Date, slots: AvailableSlot[], reservations: Reservation[]) => void;
   isLoading: boolean;
+  onOpenSettings?: () => void;
 }) {
   if (isLoading) return <CalendarSkeleton />;
 
@@ -813,6 +844,15 @@ function CalendarMainContent({
           <StatusPill tone={bookingSetting?.isActive ? "blue" : "gray"}>
             {bookingSetting?.isActive ? "운영중" : "비활성"}
           </StatusPill>
+          {onOpenSettings && (
+            <button
+              type="button"
+              onClick={onOpenSettings}
+              className="ml-auto shrink-0 rounded-full bg-white px-3 py-1.5 text-[12px] font-bold text-gray-600 shadow-sm hover:bg-gray-100"
+            >
+              설정
+            </button>
+          )}
         </div>
         <p className="text-[13px] font-semibold leading-relaxed text-gray-500">
           가능 시간과 예약을 월간 캘린더에서 확인합니다. 날짜 안의 초록 칩은 가능 시간, 파란 칩은 예약입니다.
@@ -1278,166 +1318,90 @@ function ServicesMain({
   selectedService: Service | null;
   onSelectService: (service: Service | null) => void;
 }) {
-  const [services, setServices] = useState<Service[]>([]);
-  const [inactiveServices, setInactiveServices] = useState<Service[]>([]);
-  const [pendingServices, setPendingServices] = useState<ServiceAdminItem[]>([]);
-  const [reviewServices, setReviewServices] = useState<ServiceAdminItem[]>([]);
-  const [staleServices, setStaleServices] = useState<ServiceAdminItem[]>([]);
   const [serviceView, setServiceView] = useState<ServiceView>("active");
   const [selectedAdminItemId, setSelectedAdminItemId] = useState<string | null>(null);
-  const [serviceItems, setServiceItems] = useState<ServiceItem[]>([]);
   const [selectedServiceItemId, setSelectedServiceItemId] = useState<string | null>(null);
-  const [serviceItemOptions, setServiceItemOptions] = useState<ServiceItemOption[]>([]);
   const [selectedOptionIds, setSelectedOptionIds] = useState<string[]>([]);
   const [priceCalculation, setPriceCalculation] = useState<ServicePriceCalculation | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [isMutating, setIsMutating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [modalMode, setModalMode] = useState<ServiceModalMode | null>(null);
   const [editingServiceItem, setEditingServiceItem] = useState<ServiceItem | null>(null);
   const [editingOption, setEditingOption] = useState<ServiceItemOption | null>(null);
-  const [adminCatalogItems, setAdminCatalogItems] = useState<ServiceCatalogItem[]>([]);
-  const [isAdminCatalogLoading, setIsAdminCatalogLoading] = useState(false);
   const organizationId = getOrganizationId(user);
 
-  const reloadServiceCatalog = useCallback(
-    async (preferredServiceId?: string | null) => {
-      const [activeItems, pendingItems, reviewItems, staleItems] = await Promise.all([
+  const catalogKey = organizationId ? `services-catalog-${organizationId}` : null;
+  const { data: catalogData, error: catalogError, isLoading, mutate: mutateCatalog } = useSWR(
+    catalogKey,
+    () =>
+      Promise.all([
         fetchServices(organizationId),
         fetchPendingServices(organizationId),
         fetchReviewServices(organizationId),
         fetchStaleServices(organizationId),
-      ]);
-      const mergedItems = [
-        ...activeItems,
-        ...inactiveServices.filter((inactiveService) => !activeItems.some((item) => item.id === inactiveService.id)),
-      ];
-      setServices(mergedItems);
-      setPendingServices(pendingItems);
-      setReviewServices(reviewItems);
-      setStaleServices(staleItems);
+      ]).then(([all, pending, review, stale]) => ({ all, pending, review, stale })),
+    { revalidateOnFocus: true, dedupingInterval: 5000 },
+  );
 
-      const nextService =
-        (preferredServiceId ? mergedItems.find((item) => item.id === preferredServiceId) : null) ??
-        mergedItems[0] ??
-        null;
-      onSelectService(nextService);
+  const services = catalogData?.all ?? [];
+  const pendingServices = catalogData?.pending ?? [];
+  const reviewServices = catalogData?.review ?? [];
+  const staleServices = catalogData?.stale ?? [];
+  const error = catalogError instanceof Error ? catalogError.message : catalogError ? "서비스 목록을 불러오지 못했습니다." : null;
 
-      const currentAdminItems =
-        serviceView === "pending" ? pendingItems : serviceView === "review" ? reviewItems : staleItems;
-      setSelectedAdminItemId((current) =>
-        currentAdminItems.some((item) => item.id === current) ? current : currentAdminItems[0]?.id ?? null,
-      );
-    },
-    [inactiveServices, onSelectService, organizationId, serviceView],
+  const prevServicesRef = useRef<Service[]>([]);
+  useEffect(() => {
+    const prev = prevServicesRef.current;
+    prevServicesRef.current = services;
+    if (services.length === 0) return;
+    if (selectedService && services.some((s) => s.id === selectedService.id)) return;
+    if (prev.length === 0) {
+      onSelectService(services[0] ?? null);
+    }
+  }, [services, selectedService, onSelectService]);
+
+  const { data: serviceItems = [], mutate: mutateServiceItems } = useSWR(
+    selectedService ? `service-items-${organizationId}-${selectedService.id}` : null,
+    () => fetchServiceItems(organizationId, selectedService!.id),
+    { revalidateOnFocus: false },
   );
 
   useEffect(() => {
-    let isMounted = true;
+    if (serviceItems.length === 0) return;
+    const nextItem = serviceItems[0];
+    setSelectedServiceItemId((current) => {
+      if (current && serviceItems.some((item) => item.id === current)) return current;
+      return nextItem?.id ?? null;
+    });
+    setSelectedOptionIds([]);
+  }, [serviceItems]);
 
-    async function loadInitialServices() {
-      try {
-        const [activeItems, pendingItems, reviewItems, staleItems] = await Promise.all([
-          fetchServices(organizationId),
-          fetchPendingServices(organizationId),
-          fetchReviewServices(organizationId),
-          fetchStaleServices(organizationId),
-        ]);
-        if (!isMounted) return;
-        setServices(activeItems);
-        setPendingServices(pendingItems);
-        setReviewServices(reviewItems);
-        setStaleServices(staleItems);
-        onSelectService(activeItems[0] ?? null);
-        setError(null);
-      } catch (caughtError) {
-        if (isMounted) {
-          setError(caughtError instanceof Error ? caughtError.message : "서비스 목록을 불러오지 못했습니다.");
-        }
-      } finally {
-        if (isMounted) setIsLoading(false);
-      }
-    }
+  const { data: serviceItemOptions = [], mutate: mutateServiceItemOptions } = useSWR(
+    selectedServiceItemId ? `service-item-options-${organizationId}-${selectedServiceItemId}` : null,
+    () => fetchServiceItemOptions(organizationId, selectedServiceItemId!),
+    { revalidateOnFocus: false },
+  );
 
-    void loadInitialServices();
+  const { data: adminCatalogItems = [], isLoading: isAdminCatalogLoading } = useSWR(
+    serviceView !== "active" && selectedAdminItemId
+      ? `admin-catalog-items-${organizationId}-${selectedAdminItemId}`
+      : null,
+    () => fetchPendingServiceItems(organizationId, selectedAdminItemId!),
+    { revalidateOnFocus: false },
+  );
 
-    return () => {
-      isMounted = false;
-    };
-  }, [organizationId, onSelectService]);
-
-  useEffect(() => {
-    if (!selectedService) return;
-    let isMounted = true;
-    const serviceId = selectedService.id;
-
-    async function loadServiceItems() {
-      try {
-        const items = await fetchServiceItems(organizationId, serviceId);
-        if (!isMounted) return;
-        setServiceItems(items);
-        const nextItem = items[0] ?? null;
-        setSelectedServiceItemId(nextItem?.id ?? null);
-        setSelectedOptionIds([]);
-        setPriceCalculation(nextItem ? await calculateServicePrice(organizationId, nextItem.id, []) : null);
-      } catch (caughtError) {
-        if (isMounted) setActionError(caughtError instanceof Error ? caughtError.message : "서비스 아이템을 불러오지 못했습니다.");
-      }
-    }
-
-    void loadServiceItems();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [organizationId, selectedService]);
-
-  useEffect(() => {
-    if (!selectedServiceItemId) return;
-    let isMounted = true;
-    const serviceItemId = selectedServiceItemId;
-
-    async function loadOptions() {
-      try {
-        const options = await fetchServiceItemOptions(organizationId, serviceItemId);
-        if (isMounted) setServiceItemOptions(options);
-      } catch (caughtError) {
-        if (isMounted) setActionError(caughtError instanceof Error ? caughtError.message : "옵션을 불러오지 못했습니다.");
-      }
-    }
-
-    void loadOptions();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [organizationId, selectedServiceItemId]);
-
-  useEffect(() => {
-    if (serviceView === "active" || !selectedAdminItemId) {
-      setAdminCatalogItems([]);
-      return;
-    }
-
-    let isMounted = true;
-    setIsAdminCatalogLoading(true);
-
-    fetchPendingServiceItems(organizationId, selectedAdminItemId)
-      .then((items) => {
-        if (isMounted) setAdminCatalogItems(items);
-      })
-      .catch(() => {
-        if (isMounted) setAdminCatalogItems([]);
-      })
-      .finally(() => {
-        if (isMounted) setIsAdminCatalogLoading(false);
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [organizationId, serviceView, selectedAdminItemId]);
+  const reloadServiceCatalog = useCallback(
+    async (preferredServiceId?: string | null) => {
+      const fresh = await mutateCatalog();
+      const allItems = fresh?.all ?? [];
+      const nextService =
+        (preferredServiceId ? allItems.find((item) => item.id === preferredServiceId) : null) ??
+        allItems[0] ??
+        null;
+      onSelectService(nextService);
+    },
+    [mutateCatalog, onSelectService],
+  );
 
   const selectedServiceItem = serviceItems.find((item) => item.id === selectedServiceItemId) ?? null;
   const selectedAdminItems =
@@ -1470,28 +1434,14 @@ function ServicesMain({
   const handleToggleServiceActive = async () => {
     if (!selectedService) return;
     const nextActive = selectedService.isActive === false;
-
     setIsMutating(true);
     setActionError(null);
     try {
       await updateServiceActive(organizationId, selectedService.id, nextActive);
-      const updatedService = {
-        ...selectedService,
-        isActive: nextActive,
-        isReservable: nextActive,
-      };
-      if (updatedService.isActive === false) {
-        setInactiveServices((current) => [
-          ...current.filter((service) => service.id !== updatedService.id),
-          updatedService,
-        ]);
-      } else {
-        setInactiveServices((current) => current.filter((service) => service.id !== updatedService.id));
-      }
-      setServices((current) =>
-        current.some((service) => service.id === updatedService.id)
-          ? current.map((service) => (service.id === updatedService.id ? updatedService : service))
-          : [...current, updatedService],
+      const updatedService = { ...selectedService, isActive: nextActive, isReservable: nextActive };
+      await mutateCatalog(
+        (prev) => prev ? { ...prev, all: prev.all.map((s) => s.id === updatedService.id ? updatedService : s) } : prev,
+        { revalidate: false },
       );
       onSelectService(updatedService);
     } catch (caughtError) {
@@ -1506,10 +1456,8 @@ function ServicesMain({
     setActionError(null);
     try {
       const created = await createService(organizationId, input);
-      await reloadServiceCatalog(created.id);
-      setServices((current) => [...current.filter((service) => service.id !== created.id), created]);
-      onSelectService(created);
       setServiceView("active");
+      await reloadServiceCatalog(created.id);
       setModalMode(null);
     } catch (caughtError) {
       setActionError(caughtError instanceof Error ? caughtError.message : "서비스 생성에 실패했습니다.");
@@ -1524,7 +1472,10 @@ function ServicesMain({
     setActionError(null);
     try {
       const updated = await updateService(organizationId, selectedService.id, input);
-      setServices((current) => current.map((service) => (service.id === updated.id ? updated : service)));
+      await mutateCatalog(
+        (prev) => prev ? { ...prev, all: prev.all.map((s) => s.id === updated.id ? updated : s) } : prev,
+        { revalidate: false },
+      );
       onSelectService(updated);
       setModalMode(null);
     } catch (caughtError) {
@@ -1542,12 +1493,9 @@ function ServicesMain({
     try {
       const deletedService = await deleteService(organizationId, selectedService.id);
       if (deletedService) {
-        setInactiveServices((current) => [
-          ...current.filter((service) => service.id !== deletedService.id),
-          deletedService,
-        ]);
-        setServices((current) =>
-          current.map((service) => (service.id === deletedService.id ? deletedService : service)),
+        await mutateCatalog(
+          (prev) => prev ? { ...prev, all: prev.all.map((s) => s.id === deletedService.id ? deletedService : s) } : prev,
+          { revalidate: false },
         );
         onSelectService(deletedService);
       }
@@ -1564,9 +1512,9 @@ function ServicesMain({
     setActionError(null);
     try {
       const created = await createServiceItem(organizationId, selectedService.id, input);
-      setServiceItems((current) => [...current, created]);
+      await mutateServiceItems((prev) => [...(prev ?? []), created], { revalidate: false });
       setSelectedServiceItemId(created.id);
-      setServiceItemOptions([]);
+      await mutateServiceItemOptions([], { revalidate: false });
       setSelectedOptionIds([]);
       setPriceCalculation(await calculateServicePrice(organizationId, created.id, []));
       setModalMode(null);
@@ -1583,7 +1531,7 @@ function ServicesMain({
     setActionError(null);
     try {
       const updated = await updateServiceItem(organizationId, editingServiceItem.id, input);
-      setServiceItems((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      await mutateServiceItems((prev) => (prev ?? []).map((item) => item.id === updated.id ? updated : item), { revalidate: false });
       setSelectedServiceItemId(updated.id);
       setModalMode(null);
       setEditingServiceItem(null);
@@ -1601,11 +1549,11 @@ function ServicesMain({
     setActionError(null);
     try {
       await deleteServiceItem(organizationId, item.id);
-      const remaining = serviceItems.filter((serviceItem) => serviceItem.id !== item.id);
-      setServiceItems(remaining);
+      const remaining = serviceItems.filter((si) => si.id !== item.id);
+      await mutateServiceItems(remaining, { revalidate: false });
       const nextItem = remaining[0] ?? null;
       setSelectedServiceItemId(nextItem?.id ?? null);
-      setServiceItemOptions([]);
+      await mutateServiceItemOptions([], { revalidate: false });
       setSelectedOptionIds([]);
       setPriceCalculation(nextItem ? await calculateServicePrice(organizationId, nextItem.id, []) : null);
     } catch (caughtError) {
@@ -1621,7 +1569,7 @@ function ServicesMain({
     setActionError(null);
     try {
       const created = await createServiceItemOption(organizationId, selectedServiceItemId, input);
-      setServiceItemOptions((current) => [...current, created]);
+      await mutateServiceItemOptions((prev) => [...(prev ?? []), created], { revalidate: false });
       setModalMode(null);
     } catch (caughtError) {
       setActionError(caughtError instanceof Error ? caughtError.message : "옵션 생성에 실패했습니다.");
@@ -1636,7 +1584,7 @@ function ServicesMain({
     setActionError(null);
     try {
       const updated = await updateServiceItemOption(organizationId, editingOption.id, input);
-      setServiceItemOptions((current) => current.map((option) => (option.id === updated.id ? updated : option)));
+      await mutateServiceItemOptions((prev) => (prev ?? []).map((o) => o.id === updated.id ? updated : o), { revalidate: false });
       setModalMode(null);
       setEditingOption(null);
       if (selectedServiceItemId) {
@@ -1656,7 +1604,7 @@ function ServicesMain({
     try {
       await deleteServiceItemOption(organizationId, option.id);
       const nextOptionIds = selectedOptionIds.filter((id) => id !== option.id);
-      setServiceItemOptions((current) => current.filter((item) => item.id !== option.id));
+      await mutateServiceItemOptions((prev) => (prev ?? []).filter((o) => o.id !== option.id), { revalidate: false });
       setSelectedOptionIds(nextOptionIds);
       if (selectedServiceItemId) {
         setPriceCalculation(await calculateServicePrice(organizationId, selectedServiceItemId, nextOptionIds));
@@ -1674,19 +1622,9 @@ function ServicesMain({
     setActionError(null);
     try {
       const result = await approveService(organizationId, selectedAdminItem.id, input);
-      await reloadServiceCatalog(result.service?.id ?? selectedAdminItem.id);
-      const approvedService = result.service;
-      if (approvedService) {
-        setServices((current) =>
-          current.some((service) => service.id === approvedService.id)
-            ? current.map((service) => (service.id === approvedService.id ? approvedService : service))
-            : [...current, approvedService],
-        );
-        setPendingServices((current) => current.filter((item) => item.id !== approvedService.id));
-        onSelectService(approvedService);
-      }
-      setModalMode(null);
       setServiceView("active");
+      await reloadServiceCatalog(result.service?.id ?? selectedAdminItem.id);
+      setModalMode(null);
     } catch (caughtError) {
       setActionError(caughtError instanceof Error ? caughtError.message : "서비스 승인에 실패했습니다.");
     } finally {
@@ -1700,19 +1638,9 @@ function ServicesMain({
     setActionError(null);
     try {
       const result = await applyPendingService(organizationId, selectedAdminItem.id, input);
-      await reloadServiceCatalog(result.service?.id ?? selectedAdminItem.id);
-      const appliedService = result.service;
-      if (appliedService) {
-        setServices((current) =>
-          current.some((service) => service.id === appliedService.id)
-            ? current.map((service) => (service.id === appliedService.id ? appliedService : service))
-            : [...current, appliedService],
-        );
-        setReviewServices((current) => current.filter((item) => item.id !== appliedService.id));
-        onSelectService(appliedService);
-      }
-      setModalMode(null);
       setServiceView("active");
+      await reloadServiceCatalog(result.service?.id ?? selectedAdminItem.id);
+      setModalMode(null);
     } catch (caughtError) {
       setActionError(caughtError instanceof Error ? caughtError.message : "변경 반영에 실패했습니다.");
     } finally {
@@ -1836,8 +1764,8 @@ function ServicesMain({
         }
         views={[
           {
-            label: "활성 서비스",
-            count: String(activeCount),
+            label: "전체 서비스",
+            count: String(services.length),
             icon: <Tag className="h-4 w-4" />,
             active: serviceView === "active",
             onClick: () => handleServiceViewChange("active"),
@@ -2881,20 +2809,22 @@ function ServiceEditorModal({
   const [description, setDescription] = useState(service?.description ?? "");
   const [price, setPrice] = useState(service?.price?.toString() ?? "");
   const [durationMinutes, setDurationMinutes] = useState(service?.durationMinutes ? String(service.durationMinutes) : "");
-  const [isActive, setIsActive] = useState(service?.isActive !== false);
-  const [isReservable, setIsReservable] = useState(service?.isReservable !== false);
+  const [isActive, setIsActive] = useState(mode === "approve" ? true : service?.isActive !== false);
+  const [isReservable, setIsReservable] = useState(mode === "approve" ? true : service?.isReservable !== false);
   const [formError, setFormError] = useState<string | null>(null);
 
   const handleSubmit = () => {
     const trimmedName = name.trim();
-    const parsedDuration = Number(durationMinutes);
-    const parsedPrice = price.trim() ? Number(price.replace(/,/g, "")) : null;
+    const rawDuration = Number(durationMinutes.trim().replace(/,/g, ""));
+    const parsedDuration = durationMinutes.trim() ? Math.round(rawDuration) : null;
+    const rawPrice = Number(price.trim().replace(/,/g, ""));
+    const parsedPrice = price.trim() ? Math.round(rawPrice) : null;
 
     if (!trimmedName) {
       setFormError("서비스명을 입력해 주세요.");
       return;
     }
-    if (durationMinutes.trim() && (!Number.isFinite(parsedDuration) || parsedDuration <= 0)) {
+    if (parsedDuration !== null && (!Number.isFinite(parsedDuration) || parsedDuration <= 0)) {
       setFormError("소요 시간(분)을 올바르게 입력해 주세요.");
       return;
     }
@@ -2909,7 +2839,7 @@ function ServiceEditorModal({
       description: description.trim() || null,
       price: parsedPrice,
       currency: "KRW",
-      durationMinutes: durationMinutes.trim() ? parsedDuration : null,
+      durationMinutes: parsedDuration,
       isActive,
       isReservable,
     });
@@ -4172,5 +4102,220 @@ function CallOperationsDetailPanel({ call }: { call: AiCall }) {
         <TimelineItem title="2분 전" text="의도 분류와 감정 분석이 완료되었습니다." />
       </DetailSection>
     </DetailSidebar>
+  );
+}
+
+const DAY_LABELS = ["월", "화", "수", "목", "금", "토", "일"];
+const DAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+
+type DaySchedule = { enabled: boolean; start: string; end: string };
+
+function defaultWeeklyHours(existing: Array<Record<string, unknown>>): DaySchedule[] {
+  if (existing && existing.length === 7) {
+    return existing.map((d) => ({
+      enabled: Boolean(d.enabled ?? d.is_open ?? true),
+      start: String(d.start ?? d.open_time ?? "09:00"),
+      end: String(d.end ?? d.close_time ?? "18:00"),
+    }));
+  }
+  return DAY_KEYS.map((k) => ({
+    enabled: k !== "sat" && k !== "sun",
+    start: "09:00",
+    end: "18:00",
+  }));
+}
+
+function BookingSettingModal({
+  bookingSetting,
+  isSubmitting,
+  error,
+  onClose,
+  onSubmit,
+}: {
+  bookingSetting: BookingSetting | null;
+  isSubmitting: boolean;
+  error: string | null;
+  onClose: () => void;
+  onSubmit: (input: BookingSettingInput) => void;
+}) {
+  const [name, setName] = useState(bookingSetting?.name ?? "");
+  const [timezone, setTimezone] = useState(bookingSetting?.timezone ?? "Asia/Seoul");
+  const [slotInterval, setSlotInterval] = useState(String(bookingSetting?.slotIntervalMinutes ?? 30));
+  const [minNotice, setMinNotice] = useState(String(bookingSetting?.minNoticeMinutes ?? 60));
+  const [maxDays, setMaxDays] = useState(String(bookingSetting?.maxDaysAhead ?? 30));
+  const [requiresApproval, setRequiresApproval] = useState(bookingSetting?.requiresApproval ?? true);
+  const [allowCancel, setAllowCancel] = useState(bookingSetting?.allowCustomerCancel ?? true);
+  const [isActive, setIsActive] = useState(bookingSetting?.isActive ?? true);
+  const [weeklyHours, setWeeklyHours] = useState<DaySchedule[]>(() =>
+    defaultWeeklyHours(bookingSetting?.weeklyHours ?? [])
+  );
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const updateDay = (idx: number, patch: Partial<DaySchedule>) =>
+    setWeeklyHours((prev) => prev.map((d, i) => (i === idx ? { ...d, ...patch } : d)));
+
+  const handleSubmit = () => {
+    const parsedInterval = Math.round(Number(slotInterval));
+    const parsedNotice = Math.round(Number(minNotice));
+    const parsedMaxDays = Math.round(Number(maxDays));
+
+    if (!name.trim()) { setFormError("캘린더 이름을 입력해 주세요."); return; }
+    if (!Number.isFinite(parsedInterval) || parsedInterval <= 0) { setFormError("슬롯 간격을 올바르게 입력해 주세요."); return; }
+    if (!Number.isFinite(parsedNotice) || parsedNotice < 0) { setFormError("최소 예약 여유 시간을 올바르게 입력해 주세요."); return; }
+    if (!Number.isFinite(parsedMaxDays) || parsedMaxDays <= 0) { setFormError("최대 예약 가능 일수를 올바르게 입력해 주세요."); return; }
+
+    setFormError(null);
+    onSubmit({
+      name: name.trim(),
+      timezone,
+      slotIntervalMinutes: parsedInterval,
+      minNoticeMinutes: parsedNotice,
+      maxDaysAhead: parsedMaxDays,
+      requiresApproval,
+      allowCustomerCancel: allowCancel,
+      isActive,
+      weeklyHours: weeklyHours.map((d, i) => ({
+        day: DAY_KEYS[i],
+        enabled: d.enabled,
+        start: d.start,
+        end: d.end,
+      })),
+    });
+  };
+
+  const inputClass = "w-full rounded-[12px] border border-gray-200 bg-white px-3 py-2.5 text-[13px] font-semibold outline-none focus:border-gray-400";
+  const sectionTitle = "mb-3 text-[12px] font-bold uppercase tracking-wide text-gray-400";
+
+  return (
+    <Modal title="캘린더 설정" onClose={onClose}>
+      <div className="space-y-6">
+
+        {/* 기본 정보 */}
+        <div>
+          <p className={sectionTitle}>기본 정보</p>
+          <div className="space-y-3">
+            <div>
+              <label className="mb-1.5 block text-[12px] font-bold text-gray-500">캘린더 이름</label>
+              <input value={name} onChange={(e) => setName(e.target.value)} className={inputClass} placeholder="대표 예약 캘린더" />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-[12px] font-bold text-gray-500">타임존</label>
+              <select value={timezone} onChange={(e) => setTimezone(e.target.value)} className={inputClass}>
+                <option value="Asia/Seoul">Asia/Seoul (KST, +09:00)</option>
+                <option value="Asia/Tokyo">Asia/Tokyo (JST, +09:00)</option>
+                <option value="Asia/Shanghai">Asia/Shanghai (CST, +08:00)</option>
+                <option value="America/New_York">America/New_York (EST, -05:00)</option>
+                <option value="America/Los_Angeles">America/Los_Angeles (PST, -08:00)</option>
+                <option value="Europe/London">Europe/London (GMT, +00:00)</option>
+                <option value="UTC">UTC (+00:00)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* 예약 규칙 */}
+        <div>
+          <p className={sectionTitle}>예약 규칙</p>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="mb-1.5 block text-[12px] font-bold text-gray-500">슬롯 간격</label>
+              <div className="relative">
+                <input value={slotInterval} onChange={(e) => setSlotInterval(e.target.value)} className={inputClass + " pr-8"} placeholder="30" inputMode="numeric" />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-gray-400">분</span>
+              </div>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-[12px] font-bold text-gray-500">최소 여유 시간</label>
+              <div className="relative">
+                <input value={minNotice} onChange={(e) => setMinNotice(e.target.value)} className={inputClass + " pr-8"} placeholder="60" inputMode="numeric" />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-gray-400">분</span>
+              </div>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-[12px] font-bold text-gray-500">최대 예약 일수</label>
+              <div className="relative">
+                <input value={maxDays} onChange={(e) => setMaxDays(e.target.value)} className={inputClass + " pr-8"} placeholder="30" inputMode="numeric" />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-gray-400">일</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 운영 시간 */}
+        <div>
+          <p className={sectionTitle}>운영 시간</p>
+          <div className="overflow-hidden rounded-[14px] border border-gray-100 bg-[#fafafa]">
+            {DAY_LABELS.map((label, idx) => {
+              const day = weeklyHours[idx];
+              return (
+                <div key={label} className={`flex items-center gap-3 px-4 py-2.5 ${idx < DAY_LABELS.length - 1 ? "border-b border-gray-100" : ""}`}>
+                  <button
+                    type="button"
+                    onClick={() => updateDay(idx, { enabled: !day.enabled })}
+                    className={`w-8 shrink-0 rounded-full py-0.5 text-center text-[12px] font-bold transition-colors ${day.enabled ? "bg-black text-white" : "bg-gray-200 text-gray-400"}`}
+                  >
+                    {label}
+                  </button>
+                  {day.enabled ? (
+                    <div className="flex flex-1 items-center gap-2">
+                      <input
+                        type="time"
+                        value={day.start}
+                        onChange={(e) => updateDay(idx, { start: e.target.value })}
+                        className="flex-1 rounded-[10px] border border-gray-200 bg-white px-3 py-1.5 text-[13px] font-semibold outline-none focus:border-gray-400"
+                      />
+                      <span className="text-[12px] text-gray-400">~</span>
+                      <input
+                        type="time"
+                        value={day.end}
+                        onChange={(e) => updateDay(idx, { end: e.target.value })}
+                        className="flex-1 rounded-[10px] border border-gray-200 bg-white px-3 py-1.5 text-[13px] font-semibold outline-none focus:border-gray-400"
+                      />
+                    </div>
+                  ) : (
+                    <span className="flex-1 text-[12px] font-semibold text-gray-400">휴무</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 운영 옵션 */}
+        <div>
+          <p className={sectionTitle}>운영 옵션</p>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between rounded-[12px] bg-[#f7f7f7] px-4 py-3">
+              <div>
+                <p className="text-[13px] font-bold text-gray-700">캘린더 운영</p>
+                <p className="text-[11px] text-gray-400">비활성화 시 예약 접수 불가</p>
+              </div>
+              <Toggle enabled={isActive} onChange={() => setIsActive(v => !v)} />
+            </div>
+            <div className="flex items-center justify-between rounded-[12px] bg-[#f7f7f7] px-4 py-3">
+              <div>
+                <p className="text-[13px] font-bold text-gray-700">예약 승인 필요</p>
+                <p className="text-[11px] text-gray-400">관리자가 예약을 수동 확인</p>
+              </div>
+              <Toggle enabled={requiresApproval} onChange={() => setRequiresApproval(v => !v)} />
+            </div>
+            <div className="flex items-center justify-between rounded-[12px] bg-[#f7f7f7] px-4 py-3">
+              <div>
+                <p className="text-[13px] font-bold text-gray-700">고객 취소 허용</p>
+                <p className="text-[11px] text-gray-400">고객이 직접 예약 취소 가능</p>
+              </div>
+              <Toggle enabled={allowCancel} onChange={() => setAllowCancel(v => !v)} />
+            </div>
+          </div>
+        </div>
+
+        {(formError || error) && (
+          <div className="rounded-[12px] bg-red-50 px-4 py-3 text-[13px] font-semibold text-red-600">
+            {formError ?? error}
+          </div>
+        )}
+        <ModalActions isSubmitting={isSubmitting} submitLabel="저장" onClose={onClose} onSubmit={handleSubmit} />
+      </div>
+    </Modal>
   );
 }

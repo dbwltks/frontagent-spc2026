@@ -62,7 +62,7 @@ export function AiCosDetailPanel({
   organizationId: string;
   user?: User | null;
 }) {
-  if (activeSection === "rules" || activeSection === "knowledge") {
+  if (activeSection === "rules" || activeSection === "knowledge" || activeSection === "tasks") {
     return (
       <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[20px] bg-white px-5 py-6">
         <DetailHeader activeSection={activeSection} />
@@ -76,7 +76,6 @@ export function AiCosDetailPanel({
       <DetailHeader activeSection={activeSection} />
       {activeSection === "test" && <TestDetail />}
       {activeSection === "overview" && <OverviewDetail />}
-      {activeSection === "tasks" && <TasksDetail />}
       {activeSection === "logs" && <LogsDetail />}
       {activeSection === "monitoring" && <MonitoringDetail />}
       {activeSection === "status" && <StatusDetail />}
@@ -87,7 +86,7 @@ export function AiCosDetailPanel({
 }
 
 function DetailHeader({ activeSection }: { activeSection: AiCosSection }) {
-  if (activeSection === "rules" || activeSection === "knowledge") {
+  if (activeSection === "rules" || activeSection === "knowledge" || activeSection === "tasks") {
     return (
       <div className="mb-7">
         <h2 className="text-[24px] font-bold">미리보기</h2>

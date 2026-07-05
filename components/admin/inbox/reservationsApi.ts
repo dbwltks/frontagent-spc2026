@@ -592,11 +592,11 @@ export async function updateService(
   if (data.isReservable !== undefined) body.is_reservable = data.isReservable;
 
   const response = await fetch(
-    `${getAgentApiBaseUrl()}/services/${encodeURIComponent(serviceId)}?organization_id=${encodeURIComponent(organizationId)}`,
+    `${getAgentApiBaseUrl()}/services/${encodeURIComponent(serviceId)}`,
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ organization_id: organizationId, ...body }),
     },
   );
 
@@ -733,6 +733,43 @@ export async function fetchBookingSetting(organizationId: string) {
     throw new Error(await readAgentApiError(response));
   }
 
+  return mapBookingSettingRecord((await response.json()) as BookingSettingRecord);
+}
+
+export type BookingSettingInput = {
+  name?: string;
+  timezone?: string;
+  slotIntervalMinutes?: number;
+  minNoticeMinutes?: number;
+  maxDaysAhead?: number;
+  requiresApproval?: boolean;
+  allowCustomerCancel?: boolean;
+  isActive?: boolean;
+  weeklyHours?: Array<{ day: string; enabled: boolean; start: string; end: string }>;
+};
+
+export async function updateBookingSetting(organizationId: string, data: BookingSettingInput) {
+  const body: Record<string, unknown> = {};
+  if (data.name !== undefined) body.name = data.name;
+  if (data.timezone !== undefined) body.timezone = data.timezone;
+  if (data.slotIntervalMinutes !== undefined) body.slot_interval_minutes = data.slotIntervalMinutes;
+  if (data.minNoticeMinutes !== undefined) body.min_notice_minutes = data.minNoticeMinutes;
+  if (data.maxDaysAhead !== undefined) body.max_days_ahead = data.maxDaysAhead;
+  if (data.requiresApproval !== undefined) body.requires_approval = data.requiresApproval;
+  if (data.allowCustomerCancel !== undefined) body.allow_customer_cancel = data.allowCustomerCancel;
+  if (data.isActive !== undefined) body.is_active = data.isActive;
+  if (data.weeklyHours !== undefined) body.weekly_hours = data.weeklyHours;
+
+  const response = await fetch(
+    `${getAgentApiBaseUrl()}/booking-settings/${encodeURIComponent(organizationId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+
+  if (!response.ok) throw new Error(await readAgentApiError(response));
   return mapBookingSettingRecord((await response.json()) as BookingSettingRecord);
 }
 

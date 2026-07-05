@@ -1616,11 +1616,11 @@ export function CallTab({
         ort.env.wasm.wasmPaths = "/vad/";
         ort.env.wasm.numThreads = 1;
       },
-      positiveSpeechThreshold: 0.5,
-      negativeSpeechThreshold: 0.35,
-      minSpeechMs: 200,
-      preSpeechPadMs: 400,
-      redemptionMs: 1000,
+      positiveSpeechThreshold: 0.85,
+      negativeSpeechThreshold: 0.7,
+      minSpeechMs: 600,
+      preSpeechPadMs: 300,
+      redemptionMs: 600,
       onSpeechStart: () => {
         const currentPipelineStatus = pipelineStatusRef.current;
         if (!isVoiceCallActiveRef.current || callStatusRef.current !== "active") return;
@@ -1725,6 +1725,8 @@ export function CallTab({
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
+          sampleRate: 16000,
+          channelCount: 1,
         },
       });
       mediaStreamRef.current = mediaStream;

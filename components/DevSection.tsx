@@ -1,4 +1,4 @@
-import { pageSectionShell } from './sectionLayout'
+import { pageSectionLabelMutedCenterClass, pageSectionShell, pageSectionTitleClass } from './sectionLayout'
 
 export default function DevSection() {
   const devWrapClass = 'mx-auto w-full max-w-none px-[clamp(24px,5vw,80px)]'
@@ -16,13 +16,11 @@ export default function DevSection() {
       id="developer"
     >
       <div className={`${devWrapClass} text-center`}>
-        <span className="reveal inline-flex items-center gap-2 rounded-full border border-[#2a2e3a] bg-[#21242f] px-3.5 py-[7px] text-[12.5px] font-bold text-[#aab2c4]">
-          &gt;_ Developer Ecosystem
-        </span>
-        <h2 className="reveal my-3.5 text-4xl font-extrabold leading-tight tracking-[-0.04em] !text-white max-[900px]:text-[28px]" style={{ marginTop: '18px' }}>
+        <div className={`reveal ${pageSectionLabelMutedCenterClass}`}>개발자</div>
+        <h2 className={`reveal ${pageSectionTitleClass} !text-white`}>
           원하는 환경 어디든,<br />코드 몇 줄로 통합하세요
         </h2>
-        <p className="reveal mx-auto mt-3.5 max-w-[620px] text-[17px] text-[#9aa1b3]">
+        <p className="reveal mx-auto mb-10 mt-0 max-w-[620px] text-xl leading-[1.8] text-[#9aa1b3] max-[900px]:text-lg">
           기존 사내 시스템, 새로운 프로덕트 환경, 혹은 MCP(Model Context Protocol) 환경까지. 개발자를 위한 강력하고 유연한 API 생태계를 지원합니다.
         </p>
       </div>

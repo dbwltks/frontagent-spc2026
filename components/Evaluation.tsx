@@ -2,7 +2,7 @@
 /*  작은 아이콘들 (SVG)                                                 */
 /* ------------------------------------------------------------------ */
 
-import { pageSectionShell } from './sectionLayout'
+import { pageSectionInnerClass, pageSectionLabelCenterClass, pageSectionLeadCenterClass, pageSectionShell, pageSectionTitleClass } from './sectionLayout'
 
 const panelClass =
   "rounded-[14px] bg-[rgba(255,255,255,0.72)] px-[18px] py-4 shadow-[0_4px_16px_rgba(40,50,60,0.06)] backdrop-blur-[8px]";
@@ -251,13 +251,12 @@ function SuggestionMock() {
 export default function EvaluationSection() {
   return (
     <section className={`${pageSectionShell} mb-[clamp(40px,7vh,80px)]`} id="evaluation">
-    <div
-      className="mx-auto flex w-full max-w-[1400px] flex-col justify-center bg-transparent px-10 py-12 text-[#1b1c1e] max-[860px]:px-5"
-    >
-      <h2 className="mx-auto my-3.5 w-full max-w-none text-center text-4xl font-extrabold leading-tight tracking-[-0.04em] text-[#0f1118] max-[900px]:text-[28px]">
+    <div className={`${pageSectionInnerClass} text-[#1b1c1e]`}>
+      <div className={pageSectionLabelCenterClass}>평가</div>
+      <h2 className={`mx-auto w-full max-w-none text-center ${pageSectionTitleClass}`}>
         스스로 평가하고 개선점을 찾아주는 AI
       </h2>
-      <p className="mx-auto mb-[18px] w-full max-w-none whitespace-nowrap text-center text-[17px] leading-[1.75] text-[#5b6b8c] max-[860px]:whitespace-normal">
+      <p className={`${pageSectionLeadCenterClass} max-w-none whitespace-nowrap max-[860px]:whitespace-normal`}>
         AI가 제대로 답변할까? 감으로 관리하면 해결률을 높일 수 없습니다. Call bee는 스스로 상담 품질을 진단, 제안합니다.
       </p>
 
