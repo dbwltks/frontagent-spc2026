@@ -10,7 +10,7 @@ const ruleDescClass = 'mt-1 max-w-none pl-[3px] text-[clamp(11px,0.9vw,12.5px)] 
 const ruleClass = 'border-b border-[var(--line)] bg-white py-[clamp(10px,1.2vw,14px)] last:border-0 last:pb-0'
 const ruleLabelClass = 'flex-1 text-[clamp(12px,1.05vw,14.5px)] font-bold text-[var(--ink)]'
 const labAClass =
-  'mt-[clamp(10px,1vw,14px)] min-h-[clamp(72px,8vw,96px)] rounded-2xl rounded-bl-[5px] !border !border-[rgba(0,0,0,.06)] !bg-white px-[clamp(12px,1.2vw,17px)] py-[clamp(11px,1.1vw,15px)] text-[clamp(12px,1.05vw,14px)] leading-[1.6]'
+  'mt-[clamp(10px,1vw,14px)] min-h-[clamp(96px,8vw,96px)] max-[700px]:min-h-[120px] rounded-2xl rounded-bl-[5px] !border !border-[rgba(0,0,0,.06)] !bg-white px-[clamp(12px,1.2vw,17px)] py-[clamp(11px,1.1vw,15px)] text-[clamp(12px,1.05vw,14px)] leading-[1.6]'
 const modeBtnClass = 'cursor-pointer px-[clamp(20px,2.2vw,32px)] py-[clamp(7px,0.7vw,10px)] text-[clamp(11px,0.95vw,13px)] font-bold transition-all duration-150 [font-family:inherit]'
 const labMetaDescClass = 'm-0 text-lg leading-[1.65] text-[var(--muted)]'
 const sectionClass = pageSectionInnerClass
@@ -291,7 +291,7 @@ function FlowBuilder() {
     const obs = new ResizeObserver(() => {
       const r = el.getBoundingClientRect()
       setVpSize({ w: r.width, h: r.height })
-      if (!fittedRef.current && r.width > 0) {
+      if (!fittedRef.current && r.width > 0 && r.height > 0) {
         fittedRef.current = true
         fitView(r.width, r.height)
       }
@@ -739,10 +739,18 @@ function LabPanel({ mode, onModeChange, titleVariant = 'rules' }: LabPanelProps)
   }[titleVariant]
 
   return (
-    <div className="grid min-h-[clamp(320px,34vw,440px)] grid-cols-[1.4fr_0.8fr] items-stretch gap-[clamp(16px,2.5vw,34px)] max-[700px]:min-h-[auto] max-[700px]:grid-cols-1 max-[700px]:gap-4">
+    <div className="grid min-h-[clamp(360px,38vw,480px)] grid-cols-[1.4fr_0.8fr] items-stretch gap-[clamp(16px,2.5vw,34px)] max-[700px]:grid-cols-1 max-[700px]:gap-4">
       {/* LEFT: panel */}
       <div
-        className={`relative overflow-hidden flex flex-col justify-center rounded-[clamp(16px,1.8vw,26px)] !shadow-[inset_0_1px_0_rgba(255,255,255,.5)] max-[700px]:rounded-[18px] ${titleVariant === 'tasks' ? '' : 'py-[18px] max-[700px]:py-3.5'} ${titleVariant === 'knowledge' ? 'items-center px-[8%]' : titleVariant === 'tasks' ? 'p-0' : 'px-[19%] max-[700px]:px-[6%]'}`}
+        className={`relative flex flex-col rounded-[clamp(16px,1.8vw,26px)] !shadow-[inset_0_1px_0_rgba(255,255,255,.5)] max-[700px]:rounded-[18px] ${
+          titleVariant === 'knowledge' ? 'overflow-x-auto overflow-y-visible' : 'overflow-hidden'
+        } ${
+          titleVariant === 'tasks'
+            ? 'min-h-[clamp(360px,38vw,480px)] max-[700px]:min-h-[320px] justify-center p-0'
+            : titleVariant === 'knowledge'
+              ? 'min-w-0 overflow-x-auto overflow-y-visible overscroll-x-contain touch-pan-x [-webkit-overflow-scrolling:touch] items-center justify-center px-[8%] py-[18px] max-[700px]:min-h-[400px] max-[700px]:px-4 max-[700px]:py-3.5'
+              : 'justify-center py-[18px] px-[19%] max-[700px]:px-[6%] max-[700px]:py-3.5'
+        }`}
         style={{
           background: titleVariant === 'tasks' ? undefined : {
             rules: 'linear-gradient(160deg,#dde6f7 0%,#c9d8f2 55%,#eef2fb 100%)',
@@ -776,7 +784,11 @@ function LabPanel({ mode, onModeChange, titleVariant = 'rules' }: LabPanelProps)
           <FlowBuilder />
         ) : (
         <div
-          className={`relative z-10 mx-auto w-full overflow-hidden ${titleVariant === 'knowledge' ? 'max-w-[90%] shrink-0 self-center' : 'max-w-[96%]'} ${titleVariant !== 'rules' ? '!border !border-[rgba(0,0,0,.06)] rounded-[clamp(12px,1.3vw,18px)] bg-white !shadow-[0_4px_24px_-8px_rgba(22,25,31,.18)]' : ''}`}
+          className={`relative z-10 mx-auto w-full min-w-0 ${
+            titleVariant === 'knowledge'
+              ? 'w-max min-w-[520px] max-w-[90%] shrink-0 self-center overflow-hidden !border !border-[rgba(0,0,0,.06)] rounded-[clamp(12px,1.3vw,18px)] bg-white !shadow-[0_4px_24px_-8px_rgba(22,25,31,.18)]'
+              : 'max-w-[96%] overflow-visible'
+          }`}
         >
           {titleVariant === 'knowledge' ? (
             <FunctionsKnowledgePanel
@@ -845,7 +857,7 @@ function LabPanel({ mode, onModeChange, titleVariant = 'rules' }: LabPanelProps)
 
       {/* RIGHT: preview */}
       <div
-        className={`relative flex flex-col overflow-hidden rounded-[clamp(14px,1.5vw,20px)] p-[clamp(14px,1.7vw,24px)] transition-colors duration-300 ${
+        className={`relative flex min-h-[clamp(360px,38vw,480px)] max-[700px]:min-h-[340px] flex-col overflow-hidden rounded-[clamp(14px,1.5vw,20px)] p-[clamp(14px,1.7vw,24px)] transition-colors duration-300 ${
           mode === 'after'
             ? 'bg-[#e9f1fe]'
             : 'bg-[#ebebeb]'
@@ -975,9 +987,9 @@ export default function Section3({ titleVariant = 'rules' }: Section3Props) {
   const [mode, setMode] = useState<'before' | 'after'>('before')
 
   return (
-    <section className={`${pageSectionShell} relative sm:overflow-hidden`} id={sectionId}>
-      {/* White diagonal gradient decorations */}
-      <div className="pointer-events-none absolute inset-0 z-0">
+    <section className={`${pageSectionShell} relative`} id={sectionId}>
+      {/* White diagonal gradient decorations — rotated boxes spill past viewport on mobile */}
+      <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden max-sm:hidden">
         <div className="absolute -left-24 -top-32 h-[420px] w-[700px] rotate-[22deg] bg-[linear-gradient(to_right,rgba(255,255,255,0.09),transparent)]" />
         <div className="absolute -bottom-32 right-0 h-[360px] w-[580px] rotate-[22deg] bg-[linear-gradient(to_left,rgba(255,255,255,0.06),transparent)]" />
       </div>

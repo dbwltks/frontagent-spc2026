@@ -2,7 +2,7 @@
 /*  작은 아이콘들 (SVG)                                                 */
 /* ------------------------------------------------------------------ */
 
-import { pageSectionInnerClass, pageSectionLabelCenterClass, pageSectionLeadCenterClass, pageSectionShell, pageSectionTitleClass } from './sectionLayout'
+import { pageSectionInnerClass, pageSectionLeadCenterClass, pageSectionShell, pageSectionTitleClass } from './sectionLayout'
 
 const panelClass =
   "rounded-[14px] bg-[rgba(255,255,255,0.72)] px-[18px] py-4 shadow-[0_4px_16px_rgba(40,50,60,0.06)] backdrop-blur-[8px]";
@@ -252,11 +252,10 @@ export default function EvaluationSection() {
   return (
     <section className={`${pageSectionShell} mb-[clamp(40px,7vh,80px)]`} id="evaluation">
     <div className={`${pageSectionInnerClass} text-[#1b1c1e]`}>
-      <div className={pageSectionLabelCenterClass}>평가</div>
       <h2 className={`mx-auto w-full max-w-none text-center ${pageSectionTitleClass}`}>
         스스로 평가하고 개선점을 찾아주는 AI
       </h2>
-      <p className={`${pageSectionLeadCenterClass} max-w-none whitespace-nowrap max-[860px]:whitespace-normal`}>
+      <p className={`${pageSectionLeadCenterClass} max-w-none`}>
         AI가 제대로 답변할까? 감으로 관리하면 해결률을 높일 수 없습니다. Call bee는 스스로 상담 품질을 진단, 제안합니다.
       </p>
 

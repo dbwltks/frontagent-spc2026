@@ -4138,6 +4138,7 @@ function BookingSettingModal({
   onClose: () => void;
   onSubmit: (input: BookingSettingInput) => void;
 }) {
+  const [tab, setTab] = useState<"general" | "hours" | "options">("general");
   const [name, setName] = useState(bookingSetting?.name ?? "");
   const [timezone, setTimezone] = useState(bookingSetting?.timezone ?? "Asia/Seoul");
   const [slotInterval, setSlotInterval] = useState(String(bookingSetting?.slotIntervalMinutes ?? 30));
@@ -4159,10 +4160,10 @@ function BookingSettingModal({
     const parsedNotice = Math.round(Number(minNotice));
     const parsedMaxDays = Math.round(Number(maxDays));
 
-    if (!name.trim()) { setFormError("캘린더 이름을 입력해 주세요."); return; }
-    if (!Number.isFinite(parsedInterval) || parsedInterval <= 0) { setFormError("슬롯 간격을 올바르게 입력해 주세요."); return; }
-    if (!Number.isFinite(parsedNotice) || parsedNotice < 0) { setFormError("최소 예약 여유 시간을 올바르게 입력해 주세요."); return; }
-    if (!Number.isFinite(parsedMaxDays) || parsedMaxDays <= 0) { setFormError("최대 예약 가능 일수를 올바르게 입력해 주세요."); return; }
+    if (!name.trim()) { setFormError("캘린더 이름을 입력해 주세요."); setTab("general"); return; }
+    if (!Number.isFinite(parsedInterval) || parsedInterval <= 0) { setFormError("슬롯 간격을 올바르게 입력해 주세요."); setTab("general"); return; }
+    if (!Number.isFinite(parsedNotice) || parsedNotice < 0) { setFormError("최소 예약 여유 시간을 올바르게 입력해 주세요."); setTab("general"); return; }
+    if (!Number.isFinite(parsedMaxDays) || parsedMaxDays <= 0) { setFormError("최대 예약 가능 일수를 올바르게 입력해 주세요."); setTab("general"); return; }
 
     setFormError(null);
     onSubmit({
@@ -4183,137 +4184,161 @@ function BookingSettingModal({
     });
   };
 
-  const inputClass = "w-full rounded-[12px] border border-gray-200 bg-white px-3 py-2.5 text-[13px] font-semibold outline-none focus:border-gray-400";
-  const sectionTitle = "mb-3 text-[12px] font-bold uppercase tracking-wide text-gray-400";
+  const inputCls = "w-full rounded-[10px] border border-gray-200 bg-gray-50 px-3 py-2.5 text-[13px] font-semibold text-gray-900 outline-none transition-colors focus:border-blue-400 focus:bg-white";
+  const labelCls = "mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-gray-400";
+
+  const TABS = [
+    { key: "general", label: "기본 설정" },
+    { key: "hours",   label: "운영 시간" },
+    { key: "options", label: "옵션" },
+  ] as const;
 
   return (
-    <Modal title="캘린더 설정" onClose={onClose}>
-      <div className="space-y-6">
+    <Modal title="캘린더 설정" size="lg" onClose={onClose}>
+      {/* Tab bar */}
+      <div className="mb-5 flex gap-1 rounded-[12px] bg-gray-100 p-1">
+        {TABS.map(t => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => setTab(t.key)}
+            className={`flex-1 rounded-[9px] py-1.5 text-[13px] font-bold transition-all duration-150 ${
+              tab === t.key
+                ? "bg-white text-gray-900 shadow-sm"
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
 
-        {/* 기본 정보 */}
-        <div>
-          <p className={sectionTitle}>기본 정보</p>
-          <div className="space-y-3">
-            <div>
-              <label className="mb-1.5 block text-[12px] font-bold text-gray-500">캘린더 이름</label>
-              <input value={name} onChange={(e) => setName(e.target.value)} className={inputClass} placeholder="대표 예약 캘린더" />
+      {/* Tab: 기본 설정 */}
+      {tab === "general" && (
+        <div className="space-y-5">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="col-span-2">
+              <label className={labelCls}>캘린더 이름</label>
+              <input value={name} onChange={e => setName(e.target.value)} className={inputCls} placeholder="대표 예약 캘린더" />
             </div>
-            <div>
-              <label className="mb-1.5 block text-[12px] font-bold text-gray-500">타임존</label>
-              <select value={timezone} onChange={(e) => setTimezone(e.target.value)} className={inputClass}>
-                <option value="Asia/Seoul">Asia/Seoul (KST, +09:00)</option>
-                <option value="Asia/Tokyo">Asia/Tokyo (JST, +09:00)</option>
-                <option value="Asia/Shanghai">Asia/Shanghai (CST, +08:00)</option>
-                <option value="America/New_York">America/New_York (EST, -05:00)</option>
-                <option value="America/Los_Angeles">America/Los_Angeles (PST, -08:00)</option>
-                <option value="Europe/London">Europe/London (GMT, +00:00)</option>
+            <div className="col-span-2">
+              <label className={labelCls}>타임존</label>
+              <select value={timezone} onChange={e => setTimezone(e.target.value)} className={inputCls}>
+                <option value="Asia/Seoul">Asia/Seoul — KST (+09:00)</option>
+                <option value="Asia/Tokyo">Asia/Tokyo — JST (+09:00)</option>
+                <option value="Asia/Shanghai">Asia/Shanghai — CST (+08:00)</option>
+                <option value="America/New_York">America/New_York — EST (-05:00)</option>
+                <option value="America/Los_Angeles">America/Los_Angeles — PST (-08:00)</option>
+                <option value="Europe/London">Europe/London — GMT (+00:00)</option>
                 <option value="UTC">UTC (+00:00)</option>
               </select>
             </div>
           </div>
-        </div>
 
-        {/* 예약 규칙 */}
-        <div>
-          <p className={sectionTitle}>예약 규칙</p>
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="mb-1.5 block text-[12px] font-bold text-gray-500">슬롯 간격</label>
-              <div className="relative">
-                <input value={slotInterval} onChange={(e) => setSlotInterval(e.target.value)} className={inputClass + " pr-8"} placeholder="30" inputMode="numeric" />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-gray-400">분</span>
-              </div>
-            </div>
-            <div>
-              <label className="mb-1.5 block text-[12px] font-bold text-gray-500">최소 여유 시간</label>
-              <div className="relative">
-                <input value={minNotice} onChange={(e) => setMinNotice(e.target.value)} className={inputClass + " pr-8"} placeholder="60" inputMode="numeric" />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-gray-400">분</span>
-              </div>
-            </div>
-            <div>
-              <label className="mb-1.5 block text-[12px] font-bold text-gray-500">최대 예약 일수</label>
-              <div className="relative">
-                <input value={maxDays} onChange={(e) => setMaxDays(e.target.value)} className={inputClass + " pr-8"} placeholder="30" inputMode="numeric" />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-gray-400">일</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* 운영 시간 */}
-        <div>
-          <p className={sectionTitle}>운영 시간</p>
-          <div className="overflow-hidden rounded-[14px] border border-gray-100 bg-[#fafafa]">
-            {DAY_LABELS.map((label, idx) => {
-              const day = weeklyHours[idx];
-              return (
-                <div key={label} className={`flex items-center gap-3 px-4 py-2.5 ${idx < DAY_LABELS.length - 1 ? "border-b border-gray-100" : ""}`}>
-                  <button
-                    type="button"
-                    onClick={() => updateDay(idx, { enabled: !day.enabled })}
-                    className={`w-8 shrink-0 rounded-full py-0.5 text-center text-[12px] font-bold transition-colors ${day.enabled ? "bg-black text-white" : "bg-gray-200 text-gray-400"}`}
-                  >
-                    {label}
-                  </button>
-                  {day.enabled ? (
-                    <div className="flex flex-1 items-center gap-2">
-                      <input
-                        type="time"
-                        value={day.start}
-                        onChange={(e) => updateDay(idx, { start: e.target.value })}
-                        className="flex-1 rounded-[10px] border border-gray-200 bg-white px-3 py-1.5 text-[13px] font-semibold outline-none focus:border-gray-400"
-                      />
-                      <span className="text-[12px] text-gray-400">~</span>
-                      <input
-                        type="time"
-                        value={day.end}
-                        onChange={(e) => updateDay(idx, { end: e.target.value })}
-                        className="flex-1 rounded-[10px] border border-gray-200 bg-white px-3 py-1.5 text-[13px] font-semibold outline-none focus:border-gray-400"
-                      />
-                    </div>
-                  ) : (
-                    <span className="flex-1 text-[12px] font-semibold text-gray-400">휴무</span>
-                  )}
+          <div className="rounded-[14px] border border-gray-100 bg-gray-50 p-4">
+            <p className="mb-3 text-[11px] font-bold uppercase tracking-wide text-gray-400">예약 규칙</p>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className={labelCls}>슬롯 간격</label>
+                <div className="relative">
+                  <input value={slotInterval} onChange={e => setSlotInterval(e.target.value)} className={inputCls + " pr-9"} placeholder="30" inputMode="numeric" />
+                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-gray-400">분</span>
                 </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* 운영 옵션 */}
-        <div>
-          <p className={sectionTitle}>운영 옵션</p>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between rounded-[12px] bg-[#f7f7f7] px-4 py-3">
-              <div>
-                <p className="text-[13px] font-bold text-gray-700">캘린더 운영</p>
-                <p className="text-[11px] text-gray-400">비활성화 시 예약 접수 불가</p>
               </div>
-              <Toggle enabled={isActive} onChange={() => setIsActive(v => !v)} />
-            </div>
-            <div className="flex items-center justify-between rounded-[12px] bg-[#f7f7f7] px-4 py-3">
               <div>
-                <p className="text-[13px] font-bold text-gray-700">예약 승인 필요</p>
-                <p className="text-[11px] text-gray-400">관리자가 예약을 수동 확인</p>
+                <label className={labelCls}>최소 여유 시간</label>
+                <div className="relative">
+                  <input value={minNotice} onChange={e => setMinNotice(e.target.value)} className={inputCls + " pr-9"} placeholder="60" inputMode="numeric" />
+                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-gray-400">분</span>
+                </div>
               </div>
-              <Toggle enabled={requiresApproval} onChange={() => setRequiresApproval(v => !v)} />
-            </div>
-            <div className="flex items-center justify-between rounded-[12px] bg-[#f7f7f7] px-4 py-3">
               <div>
-                <p className="text-[13px] font-bold text-gray-700">고객 취소 허용</p>
-                <p className="text-[11px] text-gray-400">고객이 직접 예약 취소 가능</p>
+                <label className={labelCls}>최대 예약 일수</label>
+                <div className="relative">
+                  <input value={maxDays} onChange={e => setMaxDays(e.target.value)} className={inputCls + " pr-7"} placeholder="30" inputMode="numeric" />
+                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-gray-400">일</span>
+                </div>
               </div>
-              <Toggle enabled={allowCancel} onChange={() => setAllowCancel(v => !v)} />
             </div>
           </div>
         </div>
+      )}
 
-        {(formError || error) && (
-          <div className="rounded-[12px] bg-red-50 px-4 py-3 text-[13px] font-semibold text-red-600">
-            {formError ?? error}
-          </div>
-        )}
+      {/* Tab: 운영 시간 */}
+      {tab === "hours" && (
+        <div className="overflow-hidden rounded-[14px] border border-gray-100">
+          {DAY_LABELS.map((label, idx) => {
+            const day = weeklyHours[idx];
+            const isLast = idx === DAY_LABELS.length - 1;
+            const isSat = idx === 5;
+            const isSun = idx === 6;
+            return (
+              <div
+                key={label}
+                className={`flex items-center gap-3 px-4 py-3 ${!isLast ? "border-b border-gray-100" : ""} ${isSun ? "bg-red-50/40" : isSat ? "bg-blue-50/30" : "bg-white"}`}
+              >
+                <button
+                  type="button"
+                  onClick={() => updateDay(idx, { enabled: !day.enabled })}
+                  className={`w-[34px] shrink-0 rounded-full py-1 text-center text-[12px] font-bold transition-colors ${
+                    day.enabled
+                      ? isSun ? "bg-red-400 text-white" : isSat ? "bg-blue-400 text-white" : "bg-gray-900 text-white"
+                      : "bg-gray-100 text-gray-400"
+                  }`}
+                >
+                  {label}
+                </button>
+                {day.enabled ? (
+                  <div className="flex flex-1 items-center gap-2">
+                    <input
+                      type="time"
+                      value={day.start}
+                      onChange={e => updateDay(idx, { start: e.target.value })}
+                      className="flex-1 rounded-[9px] border border-gray-200 bg-white px-3 py-1.5 text-[13px] font-semibold outline-none focus:border-blue-400"
+                    />
+                    <span className="text-[11px] font-bold text-gray-300">—</span>
+                    <input
+                      type="time"
+                      value={day.end}
+                      onChange={e => updateDay(idx, { end: e.target.value })}
+                      className="flex-1 rounded-[9px] border border-gray-200 bg-white px-3 py-1.5 text-[13px] font-semibold outline-none focus:border-blue-400"
+                    />
+                  </div>
+                ) : (
+                  <span className="flex-1 text-[12px] font-semibold text-gray-300">휴무</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Tab: 옵션 */}
+      {tab === "options" && (
+        <div className="space-y-2">
+          {[
+            { label: "캘린더 운영", desc: "비활성화 시 예약 접수가 중단됩니다", value: isActive, onChange: () => setIsActive(v => !v) },
+            { label: "예약 승인 필요", desc: "관리자가 모든 예약을 수동으로 승인합니다", value: requiresApproval, onChange: () => setRequiresApproval(v => !v) },
+            { label: "고객 취소 허용", desc: "고객이 마이페이지에서 직접 예약을 취소할 수 있습니다", value: allowCancel, onChange: () => setAllowCancel(v => !v) },
+          ].map(opt => (
+            <div key={opt.label} className="flex items-center justify-between rounded-[12px] border border-gray-100 bg-white px-4 py-3.5">
+              <div>
+                <p className="text-[13px] font-bold text-gray-800">{opt.label}</p>
+                <p className="mt-0.5 text-[11px] leading-relaxed text-gray-400">{opt.desc}</p>
+              </div>
+              <Toggle enabled={opt.value} onChange={opt.onChange} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {(formError || error) && (
+        <div className="mt-4 flex items-center gap-2 rounded-[10px] bg-red-50 px-4 py-3 text-[13px] font-semibold text-red-500">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          {formError ?? error}
+        </div>
+      )}
+      <div className="mt-5">
         <ModalActions isSubmitting={isSubmitting} submitLabel="저장" onClose={onClose} onSubmit={handleSubmit} />
       </div>
     </Modal>

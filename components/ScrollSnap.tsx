@@ -17,18 +17,21 @@ const SECTION_IDS = [
 
 const WHEEL_THRESHOLD = 40
 const SNAP_FALLBACK_DURATION = 1200
+const MOBILE_SNAP_MQ = '(max-width: 700px)'
 
 /**
  * Wheel-driven section snapping. Hero is taller than one viewport, so it
  * only snaps forward once the user has scrolled past its bottom edge.
  * The footer (and anything after the last tracked section) is left as
- * plain free-scroll.
+ * plain free-scroll. Disabled on mobile — touch scroll stays native.
  */
 export default function ScrollSnap() {
   const isAnimatingRef = useRef(false)
   const wheelAccumRef = useRef(0)
 
   useEffect(() => {
+    const mobileMq = window.matchMedia(MOBILE_SNAP_MQ)
+
     const getSections = () =>
       SECTION_IDS.map(id => document.getElementById(id)).filter(
         (el): el is HTMLElement => el !== null
@@ -77,6 +80,8 @@ export default function ScrollSnap() {
     }
 
     const onWheel = (e: WheelEvent) => {
+      if (mobileMq.matches) return
+
       // Locked only for the duration of the snap itself: released the
       // instant it settles, no extra cooldown after that.
       if (isAnimatingRef.current) {
@@ -172,8 +177,16 @@ export default function ScrollSnap() {
       scrollToTop(top)
     }
 
+    const onMobileChange = () => {
+      if (mobileMq.matches) releaseLock()
+    }
+
     window.addEventListener('wheel', onWheel, { passive: false })
-    return () => window.removeEventListener('wheel', onWheel)
+    mobileMq.addEventListener('change', onMobileChange)
+    return () => {
+      window.removeEventListener('wheel', onWheel)
+      mobileMq.removeEventListener('change', onMobileChange)
+    }
   }, [])
 
   return null

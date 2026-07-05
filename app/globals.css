@@ -40,6 +40,8 @@
   }
 
   html {
+    overflow-x: clip;
+    max-width: 100%;
     overscroll-behavior: none;
   }
 

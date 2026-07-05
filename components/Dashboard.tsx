@@ -2,7 +2,7 @@
 /*  공용                                                               */
 /* ================================================================== */
 
-import { pageSectionInnerClass, pageSectionLabelCenterClass, pageSectionLeadCenterClass, pageSectionShellTall, pageSectionTitleClass } from './sectionLayout'
+import { pageSectionInnerClass, pageSectionLeadCenterClass, pageSectionShellTall, pageSectionTitleClass } from './sectionLayout'
 
 const AVATAR_COLORS: Record<string, string> = {
   배지희: "#E8836B",
@@ -128,7 +128,7 @@ const cx = {
   tTabActive: "cursor-pointer rounded-lg border-0 bg-[#f0f1f3] px-4 py-[5px] text-[13px] font-bold text-[#1b1c1e]",
   viewAll: "ml-[42px] self-start cursor-pointer border-0 bg-transparent text-[12.5px] text-[#6a6f76]",
   window:
-    "mx-auto w-full overflow-hidden rounded-[14px] border border-[#e6e7ea] bg-white shadow-[0_24px_70px_rgba(30,35,45,0.18)] max-[1100px]:overflow-x-auto",
+    "mx-auto w-full min-w-0 max-w-full overflow-hidden rounded-[14px] border border-[#e6e7ea] bg-white shadow-[0_24px_70px_rgba(30,35,45,0.18)] max-[1100px]:overflow-x-auto",
   workArea: "grid h-[clamp(560px,70vh,750px)] w-full grid-cols-[48px_200px_230px_1fr_250px] bg-white max-[1100px]:min-w-[1100px]",
   workspace: "flex items-center gap-1.5 text-[13px] font-semibold",
   wsLogo: "text-[13px]",
@@ -638,7 +638,6 @@ export default function Dashboard() {
   return (
     <section className={pageSectionShellTall} id="dashboard">
     <div className={`${pageSectionInnerClass} min-h-[850px] py-8`}>
-      <div className={pageSectionLabelCenterClass}>대시보드</div>
       <h2 className={`mx-auto w-full text-center ${pageSectionTitleClass}`}>
         자동화된 상담에 사람의 판단을 더하는 통합 관리 대시보드
       </h2>
@@ -646,6 +645,7 @@ export default function Dashboard() {
         실시간 상담 참여부터 기록, 설정 관리까지 효율적으로 관리하세요.
       </p>
 
+      <div className="w-full min-w-0 max-w-full">
       <div className={cx.window}>
         <div className={cx.titleBar}>
           <div className={cx.lights}>
@@ -676,6 +676,7 @@ export default function Dashboard() {
           <ThreadColumn />
           <DetailColumn />
         </div>
+      </div>
       </div>
     </div>
     </section>

@@ -254,7 +254,7 @@ export default function SolutionSection() {
   const { ref: panelRef,  visible: panelVisible  } = useScrollReveal<HTMLDivElement>();
 
   return (
-    <section id="solution" className={`${pageSectionShell} relative sm:overflow-hidden`}>
+    <section id="solution" className={`${pageSectionShell} relative`}>
       <div className="mx-auto flex w-full max-w-[1400px] min-h-[850px] flex-col items-center justify-center bg-transparent px-10 py-12 text-center max-[860px]:px-5 lg:py-12">
 
         {/* 헤더 */}

@@ -5,7 +5,7 @@ import { ChevronDown, ChevronRight, FileText, FolderOpen } from 'lucide-react'
 import { Toggle } from '@/components/ui/Toggle'
 
 const GRID =
-  'grid min-h-[28px] grid-cols-[minmax(0,1fr)_0px_44px_0px_48px_0px] items-center gap-x-2 sm:grid-cols-[minmax(0,2.2fr)_58px_50px_68px_48px_20px] sm:gap-x-3'
+  'grid min-h-[28px] w-full grid-cols-[minmax(0,2.2fr)_58px_50px_68px_48px_20px] items-center gap-x-3'
 
 const ROW = `${GRID} px-5 py-2`
 
@@ -23,7 +23,7 @@ function RowStatusCell({ children }: { children: React.ReactNode }) {
 
 function RowMoreCell() {
   return (
-    <div className="hidden items-center justify-center text-[15px] leading-none text-gray-300 sm:flex">
+    <div className="flex items-center justify-center text-[15px] leading-none text-gray-300">
       ⋮
     </div>
   )
@@ -91,7 +91,11 @@ function DemoFolderRow({
 }) {
   return (
     <div className={`${ROW} w-full hover:bg-gray-50`}>
-      <button type="button" onClick={onActivate} className={`flex min-w-0 items-center gap-2 text-left ${indentLevel > 0 ? 'pl-4' : ''}`}>
+      <button
+        type="button"
+        onClick={onActivate}
+        className={`flex min-w-0 items-center gap-2 text-left ${indentLevel > 0 ? 'pl-4' : ''}`}
+      >
         {isExpanded ? (
           <ChevronDown className="h-4 w-4 shrink-0 text-gray-400" />
         ) : (
@@ -131,13 +135,13 @@ function DemoDocRow({
         <FileText className="h-4 w-4 shrink-0 text-blue-400" />
         <span className="truncate text-sm font-semibold text-gray-900">{doc.title}</span>
       </div>
-      <div className="hidden min-w-0 sm:flex">
+      <div className="min-w-0">
         <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-semibold text-blue-400">Document</span>
       </div>
       <div className="flex justify-end text-right text-xs font-semibold tabular-nums text-gray-700">
         {doc.referenceCount.toLocaleString()}
       </div>
-      <div className="hidden min-w-0 justify-end pr-1 text-right text-[11px] font-medium text-gray-400 sm:flex">
+      <div className="min-w-0 justify-end pr-1 text-right text-[11px] font-medium text-gray-400">
         {doc.updatedAt}
       </div>
       <RowStatusCell>
@@ -240,16 +244,16 @@ export function FunctionsKnowledgePanel({
   }
 
   return (
-    <div className="max-h-[min(420px,52vw)] overflow-y-auto overscroll-contain">
+    <div className="w-full min-w-[520px]">
       <div
-        className={`${GRID} sticky top-0 z-10 border-b border-gray-100 bg-white px-5 py-3 text-xs font-semibold text-gray-800`}
+        className={`${GRID} border-b border-gray-100 bg-white px-5 py-3 text-xs font-semibold text-gray-800`}
       >
         <span>이름</span>
-        <span className="hidden sm:inline">형식</span>
+        <span>형식</span>
         <span className="text-right">참조</span>
-        <span className="hidden text-right sm:inline">업데이트</span>
+        <span className="text-right">업데이트</span>
         <span className="flex justify-center">상태</span>
-        <span className="hidden sm:block" />
+        <span />
       </div>
 
       {DEMO_FOLDERS.map((folder, index) => (

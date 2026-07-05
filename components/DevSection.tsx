@@ -1,4 +1,4 @@
-import { pageSectionLabelMutedCenterClass, pageSectionShell, pageSectionTitleClass } from './sectionLayout'
+import { pageSectionShell, pageSectionTitleClass } from './sectionLayout'
 
 export default function DevSection() {
   const devWrapClass = 'mx-auto w-full max-w-none px-[clamp(24px,5vw,80px)]'
@@ -16,16 +16,15 @@ export default function DevSection() {
       id="developer"
     >
       <div className={`${devWrapClass} text-center`}>
-        <div className={`reveal ${pageSectionLabelMutedCenterClass}`}>개발자</div>
         <h2 className={`reveal ${pageSectionTitleClass} !text-white`}>
           원하는 환경 어디든,<br />코드 몇 줄로 통합하세요
         </h2>
-        <p className="reveal mx-auto mb-10 mt-0 max-w-[620px] text-xl leading-[1.8] text-[#9aa1b3] max-[900px]:text-lg">
+        <p className="reveal mx-auto mb-10 mt-0 max-w-[620px] text-xl leading-[1.8] text-[#9aa1b3] max-[900px]:text-base">
           기존 사내 시스템, 새로운 프로덕트 환경, 혹은 MCP(Model Context Protocol) 환경까지. 개발자를 위한 강력하고 유연한 API 생태계를 지원합니다.
         </p>
       </div>
       <div className={devWrapClass}>
-        <div className="mt-12 grid grid-cols-[repeat(3,minmax(0,400px))] justify-center gap-9 max-[900px]:grid-cols-1 max-[900px]:gap-3.5 max-[900px]:justify-items-center">
+        <div className="mt-12 grid grid-cols-1 justify-items-center gap-3.5 min-[901px]:grid-cols-[repeat(3,minmax(0,400px))] min-[901px]:justify-center min-[901px]:gap-9">
 
           <div className={devCardClass}>
             <div className={devIconClass} style={{ background: 'rgba(124,156,255,.14)' }}>

@@ -1,7 +1,7 @@
 'use client'
 
 import { GitBranch, ShieldCheck } from 'lucide-react'
-import { pageSectionInnerClass, pageSectionLabelCenterClass, pageSectionLeadCenterClass, pageSectionShell, pageSectionTitleClass } from './sectionLayout'
+import { pageSectionInnerClass, pageSectionLeadCenterClass, pageSectionShell, pageSectionTitleClass } from './sectionLayout'
 
 const ITEMS = [
   {
@@ -55,9 +55,8 @@ const sectionClass = `${pageSectionInnerClass} text-center`
 
 export default function Advantages() {
   return (
-    <section className={`${pageSectionShell} relative sm:overflow-hidden`} id="advantages">
+    <section className={`${pageSectionShell} relative`} id="advantages">
     <div className={sectionClass}>
-      <div className={pageSectionLabelCenterClass}>설계</div>
       <h2 className={pageSectionTitleClass}>상담 자동화를 현실로 만드는 Call bee의 설계</h2>
       <p className={pageSectionLeadCenterClass}>
         상담 공백을 줄이는 Call bee의 방법, 복잡하지 않습니다.<br />

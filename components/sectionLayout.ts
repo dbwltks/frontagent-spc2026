@@ -1,19 +1,19 @@
 /** Full-viewport sections. Mobile gets free height since stacked content can exceed 100vh. */
 export const pageSectionShell =
-  'box-border flex min-h-[100vh] w-full flex-col items-center justify-center overflow-visible py-12 sm:py-0 sm:h-[100vh] sm:overflow-hidden'
+  'box-border flex min-h-[100vh] w-full max-w-full flex-col items-center justify-center overflow-x-clip py-12 sm:py-0 sm:h-[100vh] sm:overflow-hidden'
 
 /** Dashboard — min one screen, can grow */
 export const pageSectionShellTall =
-  'box-border flex min-h-[100vh] w-full flex-col items-center justify-center overflow-visible'
+  'box-border flex min-h-[100vh] w-full max-w-full flex-col items-center justify-center overflow-x-clip'
 
 export const pageSectionInnerClass =
-  'mx-auto flex w-full max-w-[1400px] flex-col justify-center bg-transparent px-10 py-12 max-[860px]:px-5'
+  'mx-auto flex w-full min-w-0 max-w-[1400px] flex-col justify-center bg-transparent px-10 py-12 max-[860px]:px-5'
 
 export const pageSectionTitleClass =
   'mb-6 mt-3.5 text-5xl font-extrabold leading-tight tracking-[-0.04em] text-[#0f1118] max-[900px]:mb-5 max-[900px]:text-[32px]'
 
 export const pageSectionLeadBase =
-  'mb-10 max-w-[820px] text-xl leading-[1.8] text-[#5b6b8c] max-[900px]:text-lg'
+  'mb-10 max-w-[820px] text-xl leading-[1.8] text-[#5b6b8c] max-[900px]:text-base'
 
 export const pageSectionLeadClass = pageSectionLeadBase
 
