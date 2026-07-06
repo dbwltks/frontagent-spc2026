@@ -263,9 +263,11 @@ type ReservationFilter = "all" | "requested" | "recent" | "confirmed" | "cancell
 export function CustomerOperationsWorkspace({
   activeSection,
   user,
+  hideCallDetail = false,
 }: {
   activeSection: Exclude<CustomerSection, "conversations">;
   user: User;
+  hideCallDetail?: boolean;
 }) {
   const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
@@ -316,7 +318,7 @@ export function CustomerOperationsWorkspace({
         />
       ) : activeSection === "campaigns" ? (
         <ServiceDetailPanel service={selectedService} />
-      ) : (
+      ) : activeSection === "calls" && hideCallDetail ? null : (
         <CustomerDetailPanel activeSection={activeSection} />
       )}
     </>
