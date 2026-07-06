@@ -72,6 +72,7 @@ interface CallTabProps {
   onExitConversation?: () => void;
   onTrace?: (event: VoiceTraceEvent) => void;
   onCallDuration?: (label: string, seconds: number) => void;
+  onCallActiveChange?: (active: boolean) => void;
   onConversationUpdate?: (payload: {
     conversationId: string | null;
     sessionId: string;
@@ -172,6 +173,7 @@ export function CallTab({
   onExitConversation,
   onTrace,
   onCallDuration,
+  onCallActiveChange,
   onConversationUpdate,
 }: CallTabProps = {}) {
   const [callStatus, setCallStatus] = useState<CallStatus>("idle");
@@ -248,6 +250,7 @@ export function CallTab({
   const setVoiceCallActive = (active: boolean) => {
     isVoiceCallActiveRef.current = active;
     setIsVoiceCallActive(active);
+    onCallActiveChange?.(active);
   };
 
   useEffect(() => {
@@ -1298,7 +1301,8 @@ export function CallTab({
       });
       persistCallSession(message);
     }
-    onTextModeChange?.(true);
+    // 음성 통화 중에는 채팅 뷰로 전환하지 않고 통화 화면에 그대로 표시
+    if (!isVoiceCallActiveRef.current) onTextModeChange?.(true);
     setTextInput("");
     setError(null);
 
@@ -2077,6 +2081,7 @@ export function CallTab({
               </motion.div>
             </AnimatePresence>
           </div>
+          {/* 통화 시간 — 추후 활성화
           <div className="mt-3 flex min-h-[28px] items-center justify-center">
             <AnimatePresence initial={false}>
               {isCallRunning && (
@@ -2093,6 +2098,7 @@ export function CallTab({
               )}
             </AnimatePresence>
           </div>
+          */}
         </div>
 
         {/* 메시지가 생기면 오브 위를 덮으며 올라옴 */}

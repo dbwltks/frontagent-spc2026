@@ -26,7 +26,7 @@ export default function Home() {
       <Functions titleVariant="rules" />
       <Functions titleVariant="knowledge" />
       <Functions titleVariant="tasks" />
-      <Solution />
+      {/* <Solution /> */}
       <Evaluation />
       <Dashboard />
       <DevSection />

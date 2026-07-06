@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import {
-  Bot,
   Phone,
   type LucideIcon,
 } from "lucide-react";
@@ -98,6 +97,7 @@ type ChannelAvatarEntry = {
   className: string;
   Icon: LucideIcon;
   color: string;
+  fill?: string;
 };
 
 type HeroAvatarItem =
@@ -134,28 +134,28 @@ const heroAvatarAdventurer: CartoonAvatarEntry = {
   className: "border-[3px] border-[#8b5cf6] bg-white",
 };
 
-const channelIconClass = "border-[3px] border-black bg-white";
+const channelIconClass = "border-[3px] border-[#10b981] bg-[#10b981]";
 
 const heroIconPhone: ChannelAvatarEntry = {
   label: "전화",
   className: channelIconClass,
   Icon: Phone,
-  color: "#191919",
+  color: "#ffffff",
+  fill: "none",
 };
 
-const heroIconBot: ChannelAvatarEntry = {
+const heroIconBot: CartoonAvatarEntry = {
   label: "AI",
-  className: channelIconClass,
-  Icon: Bot,
-  color: "#191919",
+  imgSrc: "/bee-mascot.png",
+  className: "border-[3px] border-[#f59e0b] bg-white",
 };
 
 const HERO_AVATAR_ROW: HeroAvatarItem[] = [
   { kind: "cartoon", ...heroAvatarNew },
-  { kind: "channel", ...heroIconPhone },
+  { kind: "cartoon", ...heroIconBot },
   { kind: "cartoon", ...heroAvatarLoreleiNeutral },
   { kind: "cartoon", ...heroAvatarLoreleiFull },
-  { kind: "channel", ...heroIconBot },
+
   { kind: "cartoon", ...heroAvatarCroodles },
   { kind: "cartoon", ...heroAvatarAdventurer },
 ];
@@ -344,7 +344,8 @@ export default function Hero() {
                   <a.Icon
                     className="h-6 w-6 sm:h-7 sm:w-7"
                     color={a.color}
-                    strokeWidth={2.5}
+                    fill={a.fill ?? "none"}
+                    strokeWidth={1.5}
                     aria-label={a.label}
                   />
                 )}
