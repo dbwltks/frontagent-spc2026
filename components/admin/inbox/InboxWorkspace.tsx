@@ -1,7 +1,7 @@
 "use client";
 
 import type { User } from "@supabase/supabase-js";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Conversation, CustomerSection } from "../types";
 import { CustomerSectionRail } from "./CustomerSectionRail";
 import { CenterPanel, ConversationList, CustomerOperationsWorkspace, RightPanel } from "./index";
@@ -19,7 +19,19 @@ export function InboxWorkspace({
   const [message, setMessage] = useState("");
   const [listRefreshToken, setListRefreshToken] = useState(0);
 
-  const gridTemplateColumns = "76px minmax(420px,600px) minmax(480px,1fr) minmax(280px,320px)";
+  const [isWide, setIsWide] = useState(true);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1280px)");
+    setIsWide(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsWide(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+
+  const hideDetail = activeSection === "calls" && !isWide;
+  const gridTemplateColumns = hideDetail
+    ? "76px minmax(420px,600px) minmax(280px,1fr)"
+    : "76px minmax(420px,600px) minmax(280px,1fr) minmax(280px,320px)";
 
   const handleSelectConversation = (id: string, conversation: Conversation) => {
     setSelectedId(id);
@@ -99,7 +111,7 @@ export function InboxWorkspace({
           )}
         </>
       ) : (
-        <CustomerOperationsWorkspace activeSection={activeSection} user={user} />
+        <CustomerOperationsWorkspace activeSection={activeSection} user={user} hideCallDetail={hideDetail} />
       )}
     </div>
   );
