@@ -61,6 +61,7 @@ export function FloatingButton() {
   const [activeTab, setActiveTab] = useState<FloatingTab>("call");
   const [isCallTextMode, setIsCallTextMode] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [isCallActive, setIsCallActive] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -94,6 +95,11 @@ export function FloatingButton() {
     setIsOpen(true);
   };
 
+  const closePanel = () => {
+    if (isCallActive) return;
+    setIsOpen(false);
+  };
+
   useEffect(() => {
     if (!isOpen) return;
 
@@ -108,11 +114,12 @@ export function FloatingButton() {
 
     const onClickOutside = (event: MouseEvent) => {
       if (!containerRef.current?.contains(event.target as Node))
-        setIsOpen(false);
+        closePanel();
     };
     document.addEventListener("mousedown", onClickOutside);
     return () => document.removeEventListener("mousedown", onClickOutside);
-  }, [isOpen]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, isCallActive]);
 
   const renderPanelBody = () => (
     <div className="flex h-dvh flex-col sm:h-[580px]">
@@ -152,9 +159,10 @@ export function FloatingButton() {
           </div>
         )}
         <button
-          onClick={() => setIsOpen(false)}
+          onClick={closePanel}
           aria-label="축소"
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-50 text-gray-500"
+          disabled={isCallActive}
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-50 text-gray-500 disabled:opacity-30"
         >
           <MinimizeIcon className="h-5 w-5" />
         </button>
@@ -173,6 +181,7 @@ export function FloatingButton() {
             enableSharedLayout={isOpen && activeTab === "call" && !isMobile}
             onTextModeChange={setIsCallTextMode}
             onExitConversation={() => setIsCallTextMode(false)}
+            onCallActiveChange={setIsCallActive}
           />
         </div>
       </div>

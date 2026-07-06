@@ -5,7 +5,7 @@ import { ChevronDown, ChevronRight, FileText, FolderOpen } from 'lucide-react'
 import { Toggle } from '@/components/ui/Toggle'
 
 const GRID =
-  'grid min-h-[28px] w-full grid-cols-[minmax(0,2.2fr)_58px_50px_68px_48px_20px] items-center gap-x-3'
+  'grid min-h-[28px] w-full grid-cols-[minmax(0,2.2fr)_50px_68px_48px_20px] items-center gap-x-5'
 
 const ROW = `${GRID} px-5 py-2`
 
@@ -102,10 +102,9 @@ function DemoFolderRow({
           <ChevronRight className="h-4 w-4 shrink-0 text-gray-400" />
         )}
         <FolderOpen className="h-4 w-4 shrink-0 text-amber-400" />
-        <span className="truncate text-sm font-semibold text-gray-800">{name}</span>
+        <span className="truncate text-xs font-semibold text-gray-800">{name}</span>
         <span className="shrink-0 text-xs font-medium text-gray-400">{count}개</span>
       </button>
-      <div />
       <div className="flex items-center justify-end text-xs font-semibold text-gray-500">
         {referenceTotal.toLocaleString()}
       </div>
@@ -133,15 +132,12 @@ function DemoDocRow({
     <div className={`${ROW} transition-colors hover:bg-gray-50`}>
       <div className={`flex min-w-0 items-center gap-3 ${indentLevel > 0 ? 'pl-14' : 'pl-10'}`}>
         <FileText className="h-4 w-4 shrink-0 text-blue-400" />
-        <span className="truncate text-sm font-semibold text-gray-900">{doc.title}</span>
-      </div>
-      <div className="min-w-0">
-        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-semibold text-blue-400">Document</span>
+        <span className="truncate text-xs font-semibold text-gray-900">{doc.title}</span>
       </div>
       <div className="flex justify-end text-right text-xs font-semibold tabular-nums text-gray-700">
         {doc.referenceCount.toLocaleString()}
       </div>
-      <div className="min-w-0 justify-end pr-1 text-right text-[11px] font-medium text-gray-400">
+      <div className="min-w-0 justify-end pr-1 text-right text-xs font-medium text-gray-400">
         {doc.updatedAt}
       </div>
       <RowStatusCell>
@@ -249,7 +245,6 @@ export function FunctionsKnowledgePanel({
         className={`${GRID} border-b border-gray-100 bg-white px-5 py-3 text-xs font-semibold text-gray-800`}
       >
         <span>이름</span>
-        <span>형식</span>
         <span className="text-right">참조</span>
         <span className="text-right">업데이트</span>
         <span className="flex justify-center">상태</span>
