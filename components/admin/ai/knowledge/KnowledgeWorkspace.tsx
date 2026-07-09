@@ -29,6 +29,7 @@ import {
   FolderOpen,
   FolderPlus,
   Globe,
+  Link,
   Plus,
   RefreshCw,
   Search,
@@ -565,6 +566,7 @@ export function KnowledgeWorkspace({ organizationId, user }: { organizationId: s
           onClose={() => setModal(null)}
           onSubmitText={async (input) => { await workspace.handleCreateKnowledge(input); setModal(null); }}
           onSubmitFile={async (file) => { setModal(null); await workspace.handleUploadKnowledge(file); }}
+          onSubmitUrl={async (url) => { setModal(null); await workspace.handleUploadKnowledgeFromUrl(url); }}
         />
       )}
 
@@ -851,31 +853,37 @@ function KnowledgeRow({
   );
 }
 
-function KnowledgeAddModal({ isMutating, onClose, onSubmitText, onSubmitFile }: {
+function KnowledgeAddModal({ isMutating, onClose, onSubmitText, onSubmitFile, onSubmitUrl }: {
   isMutating: boolean; onClose: () => void;
   onSubmitText: (input: { title: string; content: string }) => Promise<void>;
   onSubmitFile: (file: File) => Promise<void>;
+  onSubmitUrl: (url: string) => Promise<void>;
 }) {
-  const [mode, setMode] = useState<"text" | "file">("text");
+  const [mode, setMode] = useState<"text" | "file" | "url">("text");
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [url, setUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async () => {
     if (mode === "text") {
       if (!title.trim() || !content.trim()) { setError("제목과 내용을 입력해 주세요."); return; }
       await onSubmitText({ title: title.trim(), content: content.trim() });
-    } else {
+    } else if (mode === "file") {
       if (!file) { setError("파일을 선택해 주세요."); return; }
       await onSubmitFile(file);
+    } else {
+      if (!url.trim()) { setError("URL을 입력해 주세요."); return; }
+      if (!/^https?:\/\/.+/.test(url.trim())) { setError("올바른 URL을 입력해 주세요. (http:// 또는 https://)"); return; }
+      await onSubmitUrl(url.trim());
     }
   };
 
   return (
     <Modal title="지식 추가" onClose={onClose}>
       <div className="space-y-3">
-        <div className="grid grid-cols-2 gap-1 rounded-xl border border-gray-100 p-1">
+        <div className="grid grid-cols-3 gap-1 rounded-xl border border-gray-100 p-1">
           <button type="button" onClick={() => { setMode("text"); setError(null); }}
             className={`rounded-lg px-3 py-2 text-sm font-extrabold transition-colors ${mode === "text" ? "bg-blue-50 text-blue-600" : "text-gray-400"}`}>
             텍스트 입력
@@ -883,6 +891,10 @@ function KnowledgeAddModal({ isMutating, onClose, onSubmitText, onSubmitFile }: 
           <button type="button" onClick={() => { setMode("file"); setError(null); }}
             className={`flex items-center justify-center gap-1 rounded-lg px-3 py-2 text-sm font-extrabold transition-colors ${mode === "file" ? "bg-blue-50 text-blue-600" : "text-gray-400"}`}>
             <Upload className="h-3.5 w-3.5" /> 파일 업로드
+          </button>
+          <button type="button" onClick={() => { setMode("url"); setError(null); }}
+            className={`flex items-center justify-center gap-1 rounded-lg px-3 py-2 text-sm font-extrabold transition-colors ${mode === "url" ? "bg-blue-50 text-blue-600" : "text-gray-400"}`}>
+            <Link className="h-3.5 w-3.5" /> URL
           </button>
         </div>
         {mode === "text" ? (
@@ -899,7 +911,7 @@ function KnowledgeAddModal({ isMutating, onClose, onSubmitText, onSubmitFile }: 
                 placeholder="AI가 참조할 문서 내용을 입력하세요." />
             </label>
           </>
-        ) : (
+        ) : mode === "file" ? (
           <label className={`flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed px-4 py-6 text-center transition-colors ${
             file ? "border-blue-300 bg-blue-50" : "border-gray-300 bg-[#fafafa] hover:border-gray-400"}`}>
             {file ? (
@@ -918,9 +930,20 @@ function KnowledgeAddModal({ isMutating, onClose, onSubmitText, onSubmitFile }: 
             <input type="file" className="hidden" accept=".pdf,.txt,.md,.xlsx,.xls"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
           </label>
+        ) : (
+          <label className="block">
+            <span className="mb-1 block text-xs font-bold text-gray-500">웹 페이지 URL</span>
+            <input
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://example.com/faq"
+              className="w-full rounded-xl bg-[#f7f7f7] px-4 py-3 text-sm font-semibold outline-none"
+            />
+            <span className="mt-1.5 block text-xs font-bold text-gray-400">URL의 텍스트를 추출해 지식으로 등록합니다.</span>
+          </label>
         )}
         {error && <p className="text-xs font-bold text-red-500">{error}</p>}
-        <ModalActions isSubmitting={isMutating} submitLabel={mode === "text" ? "추가" : "업로드"} onClose={onClose} onSubmit={handleSubmit} />
+        <ModalActions isSubmitting={isMutating} submitLabel={mode === "text" ? "추가" : mode === "file" ? "업로드" : "등록"} onClose={onClose} onSubmit={handleSubmit} />
       </div>
     </Modal>
   );

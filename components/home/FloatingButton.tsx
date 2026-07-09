@@ -122,7 +122,7 @@ export function FloatingButton() {
   }, [isOpen, isCallActive]);
 
   const renderPanelBody = () => (
-    <div className="flex h-dvh flex-col sm:h-[580px]">
+    <div className="flex h-full flex-col sm:h-[580px]">
       <div className="flex items-center justify-between px-5 py-4">
         {isCallView ? (
           <div className="flex items-center gap-3">
@@ -225,7 +225,7 @@ export function FloatingButton() {
               exit={{ opacity: 0.96 }}
               transition={surfaceTransition}
               style={{ transformOrigin: "bottom center" }}
-              className="pointer-events-auto fixed inset-0 z-[150] h-full w-full overflow-hidden bg-white shadow-[0_20px_60px_rgb(0,0,0,0.16)] sm:relative sm:inset-auto sm:h-[580px] sm:w-[calc(100vw-32px)] sm:max-w-[420px] sm:rounded-[32px] sm:border sm:border-gray-100"
+              className="pointer-events-auto fixed inset-0 z-[150] h-full w-full overflow-hidden overscroll-none bg-white shadow-[0_20px_60px_rgb(0,0,0,0.16)] sm:relative sm:inset-auto sm:h-[580px] sm:w-[calc(100vw-32px)] sm:max-w-[420px] sm:rounded-[32px] sm:border sm:border-gray-100"
             >
               {renderPanelBody()}
             </motion.div>
