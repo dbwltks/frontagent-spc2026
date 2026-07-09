@@ -1430,9 +1430,9 @@ export function CallTab({
   };
 
   const startPipelineVad = async (stream: MediaStream) => {
-    const AudioContextClass = window.AudioContext;
-    const audioContext = new AudioContextClass();
+    const audioContext = audioContextRef.current ?? new AudioContext();
     audioContextRef.current = audioContext;
+    if (audioContext.state === "suspended") await audioContext.resume();
     setPipelineStatus("listening");
     // Silero VAD가 발화 감지와 오디오 수집을 모두 담당하므로
     // MediaRecorder 기반 startListeningRecorder는 사용하지 않는다.
@@ -1507,6 +1507,13 @@ export function CallTab({
 
   const startCall = async () => {
     if (isVoiceCallActiveRef.current && (callStatusRef.current === "connecting" || callStatusRef.current === "active")) return;
+
+    // iOS Safari: 유저 제스처 체인 안에서 AudioContext 미리 생성 및 resume
+    if (!audioContextRef.current || audioContextRef.current.state === "closed") {
+      const ctx = new AudioContext();
+      audioContextRef.current = ctx;
+      if (ctx.state === "suspended") await ctx.resume();
+    }
 
     releaseCallResources();
     handledCallIdsRef.current.clear();
