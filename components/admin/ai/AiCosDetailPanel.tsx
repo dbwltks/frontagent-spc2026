@@ -19,6 +19,7 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { loadActiveCallSession } from "../../../lib/callSessionStorage";
 import { getAgentApiBaseUrl } from "../../../lib/agentApiBase";
+import { parseSseStream } from "../../../lib/sseStream";
 import { mapConversationMessagesToVoiceLog } from "../../../lib/voiceLogFromMessages";
 import { fetchConversationMessages } from "./conversationsApi";
 import { CallTab } from "../../home/floating/CallTab";
@@ -1144,25 +1145,11 @@ async function parseSsePreviewChat(
     onTraceStep?: (stepId: string, status: "active" | "done" | "warning", detail: string, items: unknown[]) => void;
   },
 ) {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
   let streamedText = "";
   let didStart = false;
   let finalResult: PreviewChatResult | null = null;
 
-  const handleEvent = (raw: string) => {
-    const lines = raw.split(/\r?\n/);
-    const eventName = lines.find((line) => line.startsWith("event:"))?.slice(6).trim();
-    const dataValue = lines
-      .filter((line) => line.startsWith("data:"))
-      .map((line) => line.slice(5).trimStart())
-      .join("\n");
-    if (!dataValue) return;
-
-    const data = parseStreamingEvent(dataValue);
-    const eventType = eventName ?? readStreamingString(data.type) ?? "message";
-
+  for await (const { event: eventType, data } of parseSseStream(body)) {
     if (eventType === "trace" || eventType === "trace_step") {
       callbacks?.onTraceStep?.(
         String(data.step ?? ""),
@@ -1170,64 +1157,38 @@ async function parseSsePreviewChat(
         String(data.detail ?? ""),
         Array.isArray(data.items) ? data.items : [],
       );
-      return;
+      continue;
     }
 
     if (eventType === "response_start" || eventType === "ai_response_start") {
-      didStart = true;
-      callbacks?.onStart?.();
-      return;
+      if (!didStart) { didStart = true; callbacks?.onStart?.(); }
+      continue;
     }
 
     if (eventType === "delta" || eventType === "ai_response_delta") {
-      if (!didStart) {
-        didStart = true;
-        callbacks?.onStart?.();
-      }
+      if (!didStart) { didStart = true; callbacks?.onStart?.(); }
       const delta = readStreamingString(data.delta);
       streamedText += delta;
       callbacks?.onDelta?.(delta);
-      return;
+      continue;
     }
 
     if (eventType === "ai_disabled") {
-      finalResult = parsePreviewChatResult({
-        intent: "ai_disabled",
-        message: readStreamingString(data.message),
-      });
-      return;
+      finalResult = parsePreviewChatResult({ intent: "ai_disabled", message: readStreamingString(data.message) });
+      continue;
     }
 
     if (eventType === "result" || eventType === "ai_response_done") {
-      finalResult = parsePreviewChatResult(
-        data,
-        readStreamingString(data.message) || streamedText,
-      );
-      return;
+      finalResult = parsePreviewChatResult(data, readStreamingString(data.message) || streamedText);
+      continue;
     }
 
     if (eventType === "error") {
       throw new Error(readStreamingString(data.message) || "Agent streaming failed");
     }
-  };
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-
-    const events = buffer.split(/\r?\n\r?\n/);
-    buffer = events.pop() ?? "";
-    for (const event of events) {
-      if (event.trim()) handleEvent(event);
-    }
   }
 
-  if (buffer.trim()) handleEvent(buffer);
-
-  return (
-    finalResult ?? parsePreviewChatResult({ intent: "streaming", message: streamedText })
-  );
+  return finalResult ?? parsePreviewChatResult({ intent: "streaming", message: streamedText });
 }
 
 function getRuleNames(rules: RuleTraceItem[]) {

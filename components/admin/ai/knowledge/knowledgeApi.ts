@@ -243,6 +243,26 @@ export async function uploadKnowledgeSource({
   return (await response.json()) as KnowledgeUploadResult;
 }
 
+export async function uploadKnowledgeFromUrl({
+  organizationId,
+  url,
+}: {
+  organizationId: string;
+  url: string;
+}) {
+  const response = await fetch(`${getAgentApiBaseUrl()}/knowledge/url`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ organization_id: organizationId, url }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await readAgentApiError(response));
+  }
+
+  return (await response.json()) as KnowledgeUploadResult;
+}
+
 export async function createKnowledgeFolder({
   organizationId,
   name,

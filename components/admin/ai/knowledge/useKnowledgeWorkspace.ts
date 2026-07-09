@@ -20,6 +20,7 @@ import {
   updateKnowledgeChunk,
   updateKnowledgeFolder,
   updateKnowledgeSource,
+  uploadKnowledgeFromUrl,
   uploadKnowledgeSource,
 } from "./knowledgeApi";
 import { fetchPendingServices } from "../../inbox/reservationsApi";
@@ -166,6 +167,23 @@ export function useKnowledgeWorkspace(
       }
     } catch (error) {
       setMutationError(toErrorMessage(error, "지식 업로드 실패"));
+    } finally {
+      setIsKnowledgeMutating(false);
+      void checkNewPendingServices();
+    }
+  };
+
+  const handleUploadKnowledgeFromUrl = async (url: string) => {
+    setIsKnowledgeMutating(true);
+    setMutationError(null);
+    try {
+      const result = await uploadKnowledgeFromUrl({ organizationId, url });
+      if (result.source_id) {
+        setSelectedKnowledgeId(result.source_id);
+        await mutate();
+      }
+    } catch (error) {
+      setMutationError(toErrorMessage(error, "URL 지식 추가 실패"));
     } finally {
       setIsKnowledgeMutating(false);
       void checkNewPendingServices();
@@ -403,6 +421,7 @@ export function useKnowledgeWorkspace(
     setPeekSource,
     handleCreateKnowledge,
     handleUploadKnowledge,
+    handleUploadKnowledgeFromUrl,
     handleUpdateKnowledge,
     handleToggleFolderActive,
     handleDeleteKnowledge,
