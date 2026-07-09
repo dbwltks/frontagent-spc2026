@@ -1459,13 +1459,23 @@ export function CallTab({
         const currentPipelineStatus = pipelineStatusRef.current;
         if (!isVoiceCallActiveRef.current || callStatusRef.current !== "active") return;
 
-        if (currentPipelineStatus === "processing" || currentPipelineStatus === "speaking") return;
+        if (currentPipelineStatus === "processing") return;
+
+        if (currentPipelineStatus === "speaking") {
+          pendingInterruptContextRef.current = JSON.stringify({
+            interrupted_status: currentPipelineStatus,
+            previous_user_message: lastTranscriptRef.current,
+            previous_assistant_answer: lastAnswerRef.current,
+          });
+          onTrace?.({ id: "voice_barge_in", title: "사용자 끼어들기", status: "active", detail: "이전 응답을 중단하고 새 발화를 듣습니다." });
+          interruptPipelineTurn();
+        }
 
         setPipelineStatus("recording");
       },
       onSpeechEnd: (audio: Float32Array) => {
         if (!isVoiceCallActiveRef.current || callStatusRef.current !== "active") return;
-        if (pipelineStatusRef.current === "processing" || pipelineStatusRef.current === "speaking") return;
+        if (pipelineStatusRef.current === "processing") return;
 
         const sampleRate = 16000;
         const wavBlob = float32ToWavBlob(audio, sampleRate);
@@ -1543,11 +1553,12 @@ export function CallTab({
       setVoiceMode(configuredMode);
       if (configuredMode === "pipeline") startRingbackTone();
 
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
-          autoGainControl: true,
+          autoGainControl: !isIOS,
           sampleRate: 16000,
           channelCount: 1,
         },
