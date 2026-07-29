@@ -1443,16 +1443,21 @@ export function CallTab({
       getStream: async () => stream,
       pauseStream: async () => {},
       resumeStream: async (s) => s,
-      model: "v5",
       baseAssetPath: "/vad/",
       onnxWASMBasePath: "/vad/",
       ortConfig: (ort) => {
-        ort.env.wasm.wasmPaths = "/vad/";
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
         ort.env.wasm.numThreads = 1;
+        if (isIOS) {
+          ort.env.wasm.simd = false;
+          ort.env.wasm.wasmPaths = "/vad/";
+        } else {
+          ort.env.wasm.wasmPaths = "/vad/";
+        }
       },
       positiveSpeechThreshold: 0.65,
       negativeSpeechThreshold: 0.35,
-      minSpeechMs: 400,
+      minSpeechMs: 250,
       preSpeechPadMs: 400,
       redemptionMs: 1000,
       onSpeechStart: () => {
