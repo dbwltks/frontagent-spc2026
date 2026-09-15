@@ -23,6 +23,7 @@
     "@radix-ui/react-select": "^2.3.2",
     "@ricky0123/vad-web": "^0.0.30",
     "@supabase/supabase-js": "^2.108.1",
+    "@vercel/analytics": "^2.0.1",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "next": "16.2.9",
