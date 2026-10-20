@@ -12,6 +12,7 @@
     "postinstall": "node scripts/copy-vad-assets.mjs"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^4.0.69",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
@@ -22,14 +23,20 @@
     "@radix-ui/react-popover": "^1.1.18",
     "@radix-ui/react-select": "^2.3.2",
     "@ricky0123/vad-web": "^0.0.30",
+    "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.108.1",
+    "ai": "^7.0.105",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "next": "16.2.9",
+    "openai": "^7.17.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-icons": "^5.6.0",
-    "swr": "^2.4.2"
+    "swr": "^2.4.2",
+    "unpdf": "^0.12.1",
+    "xlsx": "^0.18.5",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

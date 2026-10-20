@@ -76,6 +76,11 @@ interface CallTabProps {
 
 type CallStatus = "idle" | "connecting" | "active" | "ended";
 type VoiceMode = "pipeline" | "realtime";
+// batch = 기존 방식(발화 끝나면 통째로 녹음 업로드 후 서버에서 STT).
+// streaming = 말하는 도중 Deepgram에 실시간 전송, 발화가 끝나는 순간 텍스트가
+// 거의 다 준비돼 있음 — 두 방식을 조직 설정(voice_stt_provider)으로 토글해
+// A/B 비교할 수 있게 둘 다 유지한다.
+type SttMode = "batch" | "streaming";
 type PipelineStatus = "idle" | "listening" | "recording" | "processing" | "speaking";
 type TextMessage = {
   id: string;
@@ -182,6 +187,15 @@ export function CallTab({
   const [isVoiceCallActive, setIsVoiceCallActive] = useState(false);
   const [voiceMode, setVoiceMode] = useState<VoiceMode>("pipeline");
   const [hasMediaStream, setHasMediaStream] = useState(false);
+  const sttModeRef = useRef<SttMode>("batch");
+  const deepgramSocketRef = useRef<WebSocket | null>(null);
+  const deepgramRecorderRef = useRef<MediaRecorder | null>(null);
+  // 다음 발화가 시작되기 전에 미리 열어두는 "예열된" 소켓 — onSpeechStart
+  // 안에서 연결을 시작하면 핸드셰이크(서버에 세션 요청 + WebSocket open) 동안
+  // 사용자가 이미 말하고 있는 첫 음절들을 MediaRecorder가 놓친다(배치 모드는
+  // VAD의 preSpeechPadMs로 보정되지만 스트리밍은 그 보정이 없다). 발화가 끝날
+  // 때마다 다음 소켓을 바로 예열해두면 이 문제가 없어진다.
+  const pendingDeepgramSocketRef = useRef<Promise<WebSocket> | null>(null);
   const callStatusRef = useRef<CallStatus>("idle");
   const isVoiceCallActiveRef = useRef(false);
   const onCallDurationRef = useRef(onCallDuration);
@@ -572,7 +586,9 @@ export function CallTab({
   };
 
   const requestPipelineTurnStream = async (
-    audioBlob: Blob,
+    // 스트리밍 STT 모드에서는 브라우저가 Deepgram으로 이미 전사를 끝낸 문자열을
+    // 바로 넘긴다 — 그 경우 오디오 파일 없이 transcript 필드만 보낸다.
+    audioOrTranscript: Blob | string,
     turnId: number,
     signal: AbortSignal,
     interruptContext: string | null,
@@ -583,7 +599,11 @@ export function CallTab({
     const formData = new FormData();
     formData.append("organization_id", organizationId);
     formData.append("session_id", sessionIdRef.current);
-    formData.append("audio", audioBlob, audioUploadFileName(audioBlob));
+    if (typeof audioOrTranscript === "string") {
+      formData.append("transcript", audioOrTranscript);
+    } else {
+      formData.append("audio", audioOrTranscript, audioUploadFileName(audioOrTranscript));
+    }
     if (interruptContext) formData.append("interrupt_context", interruptContext);
 
     const response = await fetch(`${API_BASE}/voice/pipeline/turn/stream`, {
@@ -1343,6 +1363,7 @@ export function CallTab({
     const totalStartedAt = performance.now();
 
     try {
+      // eslint-disable-next-line react-hooks/purity -- 위 totalStartedAt과 동일 사유(렌더 경로 무관)
       const uploadPreparedAt = performance.now();
       onTrace?.({
         id: "voice_audio_prepare",
@@ -1520,6 +1541,266 @@ export function CallTab({
     };
   };
 
+  // processRecordedAudio(배치 모드)의 스트리밍 버전 — 오디오 블롭 대신 이미
+  // Deepgram이 전사해준 문자열을 바로 서버로 보낸다. 업로드 준비 trace가 없다는
+  // 것 말고는 로직이 동일하다.
+  const processStreamedTranscript = async (transcript: string, turnId: number, signal: AbortSignal) => {
+    if (!isCurrentPipelineTurn(turnId)) return;
+    setPipelineStatus("processing");
+    setError(null);
+    // eslint-disable-next-line react-hooks/purity
+    const totalStartedAt = performance.now();
+
+    try {
+      const interruptContext = pendingInterruptContextRef.current;
+      pendingInterruptContextRef.current = null;
+      const result = await requestPipelineTurnStream(
+        transcript,
+        turnId,
+        signal,
+        interruptContext,
+        (liveTranscript) => {
+          if (!isCurrentPipelineTurn(turnId)) return;
+          setTextMessages((messages) => [...messages, { id: `user_${Date.now()}`, role: "user", text: liveTranscript }]);
+        },
+        (readyAnswer) => {
+          if (!isCurrentPipelineTurn(turnId)) return;
+          onTrace?.({ id: "voice_answer_preview", title: "AI 응답", status: "active", detail: readyAnswer });
+        },
+        totalStartedAt,
+      );
+      if (!isCurrentPipelineTurn(turnId)) return;
+
+      if (result.conversationId) publishConversationUpdate(result.conversationId, result.transcript);
+      lastTranscriptRef.current = result.transcript;
+      lastAnswerRef.current = result.answer;
+      setTextMessages((messages) => {
+        const last = messages[messages.length - 1];
+        if (last?.id === `agent_stream_${turnId}`) {
+          return [...messages.slice(0, -1), { ...last, text: result.answer, isPending: false }];
+        }
+        return [...messages, { id: `agent_${turnId}`, role: "agent", text: result.answer, isPending: false }];
+      });
+      onTrace?.({
+        id: "voice_answer",
+        title: "AI 응답",
+        status: "done",
+        detail: result.answer,
+        // eslint-disable-next-line react-hooks/purity
+        elapsedMs: Math.round(performance.now() - totalStartedAt),
+        items: [result.transcript],
+      });
+
+      if (result.shouldEndSession) {
+        if (isCurrentPipelineTurn(turnId)) endCallByAgent();
+        return;
+      }
+
+      if (isCurrentPipelineTurn(turnId)) {
+        setPipelineStatus("listening");
+        schedulePipelineIdleTimeouts();
+      }
+    } catch (pipelineError) {
+      if (pipelineError instanceof DOMException && pipelineError.name === "AbortError") return;
+      if (!isCurrentPipelineTurn(turnId)) return;
+      const message = pipelineError instanceof Error ? pipelineError.message : "음성 처리에 실패했습니다.";
+      setError(message);
+      setPipelineStatus(isVoiceCallActiveRef.current && callStatusRef.current === "active" ? "listening" : "idle");
+      if (isVoiceCallActiveRef.current && callStatusRef.current === "active") schedulePipelineIdleTimeouts();
+    }
+  };
+
+  // Deepgram 실시간 전사 WebSocket을 연다. 브라우저가 직접 붙는다(서버는 키
+  // 전달만 중계) — 그래서 서버리스 구조를 유지한다.
+  const connectDeepgramSocket = async (): Promise<WebSocket> => {
+    // 소켓을 재사용하지 않는다 — 발화마다 새 MediaRecorder가 WebM 헤더를 새로
+    // 찍어서 보내는데, 이전 소켓이 아직 Deepgram 쪽에서 안 닫혀있는 상태로
+    // 재사용되면 이미 헤더를 받은 스트림 중간에 헤더가 또 끼어들어가 디코딩이
+    // 깨진다("스트리밍 오류"의 실제 원인). 매 발화 새 소켓이 유일하게 안전하다.
+    const sessionParams = new URLSearchParams({ organization_id: organizationId });
+    const sessionResponse = await fetch(`${API_BASE}/voice/stt-session?${sessionParams}`);
+    if (!sessionResponse.ok) throw new Error(`STT 세션 발급 실패 (HTTP ${sessionResponse.status})`);
+    const session = (await sessionResponse.json()) as { api_key: string; language: string; model: string };
+
+    const wsParams = new URLSearchParams({
+      language: session.language,
+      model: session.model,
+      encoding: "opus",
+      container: "webm",
+      smart_format: "true",
+      endpointing: "300",
+    });
+    const socket = new WebSocket(`wss://api.deepgram.com/v1/listen?${wsParams}`, ["token", session.api_key]);
+    deepgramSocketRef.current = socket;
+    await new Promise<void>((resolve, reject) => {
+      socket.onopen = () => resolve();
+      socket.onerror = () => reject(new Error("Deepgram 연결 실패"));
+    });
+    return socket;
+  };
+
+  // 배치 모드(startPipelineVad)와 VAD 설정은 동일하지만, onSpeechEnd에서 녹음된
+  // Float32Array를 업로드하는 대신 — 발화 중 내내 Deepgram으로 스트리밍해온
+  // 전사 결과를 바로 쓴다.
+  const startPipelineVadStreaming = async (stream: MediaStream) => {
+    const audioContext = audioContextRef.current ?? new AudioContext();
+    audioContextRef.current = audioContext;
+    if (audioContext.state === "suspended") await audioContext.resume();
+    setPipelineStatus("listening");
+
+    let finalTranscriptParts: string[] = [];
+
+    const ensureSocketHandlers = (socket: WebSocket) => {
+      socket.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(String(event.data)) as {
+            type?: string;
+            is_final?: boolean;
+            channel?: { alternatives?: { transcript?: string }[] };
+          };
+          const text = payload.channel?.alternatives?.[0]?.transcript?.trim();
+          if (payload.type === "Results" && payload.is_final && text) {
+            finalTranscriptParts.push(text);
+          }
+        } catch {
+          // 파싱 실패한 메시지는 무시 — 다음 메시지로 계속 진행한다.
+        }
+      };
+    };
+
+    const { MicVAD } = await import("@ricky0123/vad-web");
+
+    const vad = await MicVAD.new({
+      getStream: async () => stream,
+      pauseStream: async () => {},
+      resumeStream: async (s) => s,
+      baseAssetPath: "/vad/",
+      onnxWASMBasePath: "/vad/",
+      ortConfig: (ort) => {
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        ort.env.wasm.numThreads = 1;
+        if (isIOS) {
+          ort.env.wasm.simd = false;
+          ort.env.wasm.wasmPaths = "/vad/";
+        } else {
+          ort.env.wasm.wasmPaths = "/vad/";
+        }
+      },
+      positiveSpeechThreshold: 0.65,
+      negativeSpeechThreshold: 0.35,
+      minSpeechMs: 250,
+      preSpeechPadMs: 400,
+      redemptionMs: 1000,
+      onSpeechStart: () => {
+        const currentPipelineStatus = pipelineStatusRef.current;
+        if (!isVoiceCallActiveRef.current || callStatusRef.current !== "active") return;
+        if (currentPipelineStatus === "processing") return;
+
+        if (currentPipelineStatus === "speaking") {
+          pendingInterruptContextRef.current = JSON.stringify({
+            interrupted_status: currentPipelineStatus,
+            previous_user_message: lastTranscriptRef.current,
+            previous_assistant_answer: lastAnswerRef.current,
+          });
+          onTrace?.({ id: "voice_barge_in", title: "사용자 끼어들기", status: "active", detail: "이전 응답을 중단하고 새 발화를 듣습니다." });
+          interruptPipelineTurn();
+        }
+
+        setPipelineStatus("recording");
+        finalTranscriptParts = [];
+
+        void (async () => {
+          try {
+            // onSpeechEnd가 끝날 때 다음 소켓을 미리 예열해두므로, 보통 이미
+            // 연결돼 있는 소켓을 즉시 쓴다 — 핸드셰이크를 기다리느라 발화
+            // 초반을 놓치는 걸 막는다. 첫 발화라 예열된 게 없으면 그제서야 연다.
+            const socketPromise = pendingDeepgramSocketRef.current ?? connectDeepgramSocket();
+            pendingDeepgramSocketRef.current = null;
+            const socket = await socketPromise;
+            ensureSocketHandlers(socket);
+
+            const recorder = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
+            deepgramRecorderRef.current = recorder;
+            recorder.ondataavailable = (e) => {
+              if (e.data.size > 0 && socket.readyState === WebSocket.OPEN) {
+                void e.data.arrayBuffer().then((buf) => socket.send(buf));
+              }
+            };
+            recorder.start(250);
+          } catch (err) {
+            console.error("Deepgram 스트리밍 시작 실패:", err);
+          }
+        })();
+      },
+      onSpeechEnd: () => {
+        if (!isVoiceCallActiveRef.current || callStatusRef.current !== "active") return;
+        if (pipelineStatusRef.current === "processing") return;
+
+        const recorder = deepgramRecorderRef.current;
+        const socket = deepgramSocketRef.current;
+
+        beginPipelineTurn();
+        isSpeechTurnRef.current = true;
+        speechTurnStartedAtRef.current = performance.now();
+        const turnId = pipelineTurnIdRef.current;
+        const signal = activeTurnAbortControllerRef.current?.signal;
+
+        void (async () => {
+          // 녹음을 멈추면 마지막 ondataavailable이 비동기로 들어오니, 아주 짧게
+          // 기다렸다가 Deepgram에 "지금까지 받은 걸로 마무리해줘" 신호를 보낸다.
+          recorder?.stop();
+          await new Promise((resolve) => setTimeout(resolve, 150));
+          if (socket?.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: "CloseStream" }));
+          }
+          // CloseStream 이후 마지막 Results 메시지가 올 시간을 짧게 더 준다.
+          await new Promise((resolve) => setTimeout(resolve, 200));
+
+          // 서버가 CloseStream을 처리해서 알아서 닫아줄 때까지 기다리지 않고
+          // 여기서 바로 닫는다 — 다음 발화가 금방 시작되면 아직 안 닫힌 이
+          // 소켓이 재사용돼서 새 MediaRecorder의 헤더가 중간에 끼어드는 사고로
+          // 이어질 수 있다(실제 스트리밍 오류의 원인). 그 다음 바로 다음 발화용
+          // 소켓을 예열해둔다.
+          socket?.close();
+          if (deepgramSocketRef.current === socket) deepgramSocketRef.current = null;
+          pendingDeepgramSocketRef.current = connectDeepgramSocket().catch((err) => {
+            console.error("다음 Deepgram 소켓 예열 실패:", err);
+            return Promise.reject(err);
+          });
+
+          const transcript = finalTranscriptParts.join(" ").trim();
+          if (!signal || !transcript) {
+            setError("음성이 인식되지 않았습니다. 다시 말씀해 주세요.");
+            setPipelineStatus("listening");
+            schedulePipelineIdleTimeouts();
+            return;
+          }
+          void processStreamedTranscript(transcript, turnId, signal);
+        })();
+      },
+    });
+
+    // 첫 발화도 핸드셰이크를 기다리지 않도록, VAD가 듣기 시작하기 전에 첫
+    // 소켓을 미리 열어둔다.
+    pendingDeepgramSocketRef.current = connectDeepgramSocket().catch((err) => {
+      console.error("첫 Deepgram 소켓 예열 실패:", err);
+      return Promise.reject(err);
+    });
+
+    vad.start();
+
+    const originalClose = audioContext.close.bind(audioContext);
+    audioContext.close = async () => {
+      vad.destroy();
+      deepgramRecorderRef.current?.stop();
+      deepgramRecorderRef.current = null;
+      deepgramSocketRef.current?.close();
+      deepgramSocketRef.current = null;
+      pendingDeepgramSocketRef.current = null;
+      return originalClose();
+    };
+  };
+
   const startCall = async () => {
     if (isVoiceCallActiveRef.current && (callStatusRef.current === "connecting" || callStatusRef.current === "active")) return;
 
@@ -1549,13 +1830,14 @@ export function CallTab({
         signal: callAbortController.signal,
       });
       if (!configResponse.ok) throw new Error(`음성 설정 조회 실패 (HTTP ${configResponse.status})`);
-      const configData = (await configResponse.json()) as { mode?: string };
+      const configData = (await configResponse.json()) as { mode?: string; stt_mode?: string };
       if (callAbortController.signal.aborted) return;
       // 음성 통화는 STT->LLM->TTS pipeline(600~900ms)이 아니라 OpenAI Realtime
       // API(음성<->음성 직결, 250~500ms)를 우선한다. 서버가 조직 설정에 따라
       // mode를 내려주므로 그 값을 그대로 따른다.
       const configuredMode: VoiceMode = configData.mode === "realtime" ? "realtime" : "pipeline";
       setVoiceMode(configuredMode);
+      sttModeRef.current = configData.stt_mode === "streaming" ? "streaming" : "batch";
       if (configuredMode === "pipeline") startRingbackTone();
 
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
@@ -1576,7 +1858,11 @@ export function CallTab({
         audioElementRef.current = document.createElement("audio");
         setPipelineStatus("speaking");
         await playOpeningGreeting();
-        await startPipelineVad(mediaStream);
+        if (sttModeRef.current === "streaming") {
+          await startPipelineVadStreaming(mediaStream);
+        } else {
+          await startPipelineVad(mediaStream);
+        }
         return;
       }
 
