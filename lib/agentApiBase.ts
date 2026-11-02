@@ -1,21 +1,17 @@
-const DEFAULT_AGENT_API_URL = "https://api.light-code.dev";
-const LOCAL_DEV_API_PROXY = "/agent-api";
+// 백엔드는 Next Route Handler(app/api/*)로 통합됐으므로 기본값은 같은 도메인의 /api다.
+// 별도 서버를 붙이고 싶을 때만 NEXT_PUBLIC_AGENT_API_URL로 덮어쓴다.
+const DEFAULT_AGENT_API_URL = "/api";
 
 export function getAgentApiBaseUrl() {
   const configured = process.env.NEXT_PUBLIC_AGENT_API_URL?.trim();
-
-  if (!configured) {
-    return process.env.NODE_ENV === "development" ? LOCAL_DEV_API_PROXY : DEFAULT_AGENT_API_URL;
-  }
-
-  return configured.replace(/\/$/, "");
+  return configured ? configured.replace(/\/$/, "") : DEFAULT_AGENT_API_URL;
 }
 
 export async function readAgentApiJson<T>(response: Response): Promise<T> {
   const contentType = response.headers.get("content-type") ?? "";
   if (!contentType.includes("application/json")) {
     throw new Error(
-      `API가 JSON 대신 HTML을 반환했습니다 (${response.url}). 로컬은 NEXT_PUBLIC_AGENT_API_URL=/agent-api, 배포는 https://api.light-code.dev 로 맞춰 주세요.`,
+      `API가 JSON 대신 HTML을 반환했습니다 (${response.url}). NEXT_PUBLIC_AGENT_API_URL이 /api 또는 올바른 API 주소인지 확인해 주세요.`,
     );
   }
 
