@@ -25,21 +25,25 @@ export async function readAgentApiJson<T>(response: Response): Promise<T> {
 export async function readAgentApiError(response: Response) {
   const fallback = `HTTP ${response.status}`;
 
+  // body는 한 번만 읽을 수 있으므로 text로 먼저 읽고 JSON 파싱을 시도한다.
+  let text = "";
   try {
-    const payload = (await response.json()) as { detail?: unknown; message?: unknown; error?: unknown };
+    text = await response.text();
+  } catch {
+    return fallback;
+  }
+  if (!text) return fallback;
+
+  try {
+    const payload = JSON.parse(text) as { detail?: unknown; message?: unknown; error?: unknown };
     const detail = payload.detail ?? payload.message ?? payload.error;
 
     if (typeof detail === "string") return detail;
     if (Array.isArray(detail)) return detail.map((item) => JSON.stringify(item)).join(", ");
     if (detail) return JSON.stringify(detail);
+    return fallback;
   } catch {
-    try {
-      const text = await response.text();
-      if (text) return text;
-    } catch {
-      return fallback;
-    }
+    // JSON이 아닌 응답(HTML 에러 페이지 등)은 앞부분만 보여준다.
+    return `${fallback}: ${text.replace(/\s+/g, " ").slice(0, 200)}`;
   }
-
-  return fallback;
 }
