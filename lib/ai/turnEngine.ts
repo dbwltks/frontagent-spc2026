@@ -1,3 +1,4 @@
+import { loadBuiltinRules } from "./builtinRules";
 import { openai } from "@ai-sdk/openai";
 import { stepCountIs, streamText, type ToolSet } from "ai";
 import { createSupabaseServiceClient } from "../supabase/service";
@@ -82,7 +83,11 @@ export async function* runTurn({ organizationId, sessionId, channel, userMessage
       .select("name, instruction")
       .eq("organization_id", organizationId)
       .eq("is_active", true)
-      .then(({ data }) => data ?? []),
+      .then(async ({ data }) => {
+        // 조직이 만든 규칙 + 켜져 있는 기본 규칙을 함께 적용한다.
+        const builtin = (await loadBuiltinRules(supabase, organizationId)).filter((rule) => rule.is_active);
+        return [...builtin, ...(data ?? [])];
+      }),
     getActiveTaskSession(organizationId, sessionId),
     // "task" 분류로 갈 때 쓸 플로우 목록도 여기서 같이 당겨둔다 — 안 쓰더라도
     // 저렴한 읽기라, 순차로 또 왕복하는 것보다 미리 받아두는 게 낫다.

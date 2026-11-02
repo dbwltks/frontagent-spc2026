@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { HttpError, must, runAdmin } from "../../../lib/org/adminRoute";
+import { loadBuiltinRules } from "../../../lib/ai/builtinRules";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,7 +13,7 @@ export function GET(request: NextRequest) {
       .eq("organization_id", organizationId)
       .order("created_at", { ascending: true });
     if (error) throw error;
-    return { items: data ?? [] };
+    return { items: [...(await loadBuiltinRules(supabase, organizationId)), ...(data ?? [])] };
   });
 }
 

@@ -42,7 +42,8 @@ export async function runAdmin(
     if (err instanceof HttpError) {
       return NextResponse.json({ error: err.message }, { status: err.status });
     }
-    const message = err instanceof Error ? err.message : (err as { message?: string })?.message ?? "서버 오류";
+    console.error(`[admin-route] ${request.method} ${request.nextUrl.pathname} 실패:`, err);
+    const message = err instanceof Error ? err.message : (err as { message?: string })?.message || "서버 오류";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
