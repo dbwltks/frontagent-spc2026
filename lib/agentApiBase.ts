@@ -3,8 +3,10 @@
 const DEFAULT_AGENT_API_URL = "/api";
 
 export function getAgentApiBaseUrl() {
-  const configured = process.env.NEXT_PUBLIC_AGENT_API_URL?.trim();
-  return configured ? configured.replace(/\/$/, "") : DEFAULT_AGENT_API_URL;
+  const configured = process.env.NEXT_PUBLIC_AGENT_API_URL?.trim().replace(/\/$/, "");
+  // /agent-api는 폐기된 Python 백엔드 프록시 경로라서, 환경변수에 남아 있어도 /api로 돌린다.
+  if (!configured || configured === "/agent-api") return DEFAULT_AGENT_API_URL;
+  return configured;
 }
 
 export async function readAgentApiJson<T>(response: Response): Promise<T> {
