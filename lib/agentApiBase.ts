@@ -26,8 +26,8 @@ export async function readAgentApiError(response: Response) {
   const fallback = `HTTP ${response.status}`;
 
   try {
-    const payload = (await response.json()) as { detail?: unknown; message?: unknown };
-    const detail = payload.detail ?? payload.message;
+    const payload = (await response.json()) as { detail?: unknown; message?: unknown; error?: unknown };
+    const detail = payload.detail ?? payload.message ?? payload.error;
 
     if (typeof detail === "string") return detail;
     if (Array.isArray(detail)) return detail.map((item) => JSON.stringify(item)).join(", ");

@@ -77,5 +77,6 @@ export async function updateOrganizationAiSettings(
     },
   );
   if (!response.ok) throw new Error(await readAgentApiError(response));
-  return readAgentApiJson<OrganizationAiSettings>(response);
+  const payload = await readAgentApiJson<OrganizationAiSettings | OrganizationAiSettingsResponse>(response);
+  return "settings" in payload ? payload.settings : payload;
 }

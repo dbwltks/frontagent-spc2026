@@ -25,7 +25,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const supabase = createSupabaseServiceClient();
   const { data, error } = await supabase
     .from("conversation_messages")
-    .select("id, sender_type, sender_name, message, created_at")
+    .select("id, organization_id, conversation_id, sender_type, sender_name, message, metadata, created_at")
     .eq("organization_id", organizationId)
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: true });

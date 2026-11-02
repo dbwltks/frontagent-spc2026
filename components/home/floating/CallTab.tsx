@@ -7,6 +7,7 @@ import { getEmbedOrganizationId } from "../../../lib/organization";
 import { getAgentApiBaseUrl } from "../../../lib/agentApiBase";
 import { clearActiveCallSession, loadActiveCallSession, saveCallSession } from "../../../lib/callSessionStorage";
 import { parseSseStream, type SseEvent } from "../../../lib/sseStream";
+import { randomUUID } from "../../../lib/uuid";
 import { ShaderOrb } from "./ShaderOrb";
 
 const API_BASE = getAgentApiBaseUrl();
@@ -233,7 +234,7 @@ export function CallTab({
   const lastTranscriptRef = useRef<string | null>(null);
   const lastAnswerRef = useRef<string | null>(null);
   const audioUrlRef = useRef<string | null>(null);
-  const sessionIdRef = useRef(`${sessionIdPrefix}${crypto.randomUUID()}`);
+  const sessionIdRef = useRef(`${sessionIdPrefix}${randomUUID()}`);
   const conversationIdRef = useRef<string | null>(null);
   const seenMessageIdsRef = useRef<Set<string>>(new Set());
   const messageListRef = useRef<HTMLDivElement | null>(null);
@@ -542,7 +543,7 @@ export function CallTab({
 
   const rotateSessionForNextConversation = () => {
     clearActiveCallSession(organizationId, userId);
-    sessionIdRef.current = `${sessionIdPrefix}${crypto.randomUUID()}`;
+    sessionIdRef.current = `${sessionIdPrefix}${randomUUID()}`;
     conversationIdRef.current = null;
     seenMessageIdsRef.current.clear();
     handledCallIdsRef.current.clear();
@@ -1816,7 +1817,7 @@ export function CallTab({
     const callAbortController = new AbortController();
     callAbortControllerRef.current = callAbortController;
     conversationIdRef.current = null;
-    sessionIdRef.current = `${sessionIdPrefix}${crypto.randomUUID()}`;
+    sessionIdRef.current = `${sessionIdPrefix}${randomUUID()}`;
     persistCallSession();
     setVoiceCallActive(true);
     callStatusRef.current = "connecting";
