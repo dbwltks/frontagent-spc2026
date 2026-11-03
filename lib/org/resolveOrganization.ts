@@ -3,6 +3,9 @@ import { createSupabaseServerClient } from "../supabase/server";
 
 export class OrganizationAccessError extends Error {}
 
+// 관리자 콘솔에 들어올 수 있는 역할. 그 외(member 등)는 일반 멤버로 취급한다.
+const ADMIN_ROLES = new Set(["owner", "admin"]);
+
 // 공개 위젯 라우트(/api/voice/*, /api/chat)용 — 인증 없이 organization_id가
 // 실존하는 조직인지만 확인한다. organizations/organization_members는 RLS가
 // 꺼져있어(advisor 확인됨) DB가 접근을 막아주지 않으므로, 여기서 직접
@@ -40,6 +43,8 @@ export async function resolveAdminOrganization(organizationId: string) {
 
   if (error) throw new OrganizationAccessError(error.message);
   if (!membership) throw new OrganizationAccessError("이 조직에 접근 권한이 없습니다.");
+  // 일반 멤버(member 등)는 조직에 속해 있어도 관리자 콘솔 데이터에 접근할 수 없다.
+  if (!ADMIN_ROLES.has(membership.role)) throw new OrganizationAccessError("관리자 권한이 필요합니다.");
 
   return { userId: userData.user.id, role: membership.role as string };
 }

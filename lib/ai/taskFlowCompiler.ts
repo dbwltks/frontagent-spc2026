@@ -306,7 +306,7 @@ export async function loadEnabledFlows(organizationId: string): Promise<TaskFlow
   return (data ?? []) as TaskFlow[];
 }
 
-// task_sessions row를 만들고 첫 스텝까지 전진시킨다 — LLM tool과 Jev 직접
+// task_sessions row를 만들고 첫 스텝까지 전진시킨다 — LLM tool과 Decisions API 직접
 // 라우팅(turnEngine.ts) 둘 다 이 함수 하나만 공유한다.
 export async function startTaskFlow(organizationId: string, sessionId: string, flowId: string, initialMessage?: string) {
   const supabase = createSupabaseServiceClient();
@@ -346,9 +346,9 @@ export async function startTaskFlow(organizationId: string, sessionId: string, f
   return { started: true as const, step: next.value, fillers };
 }
 
-// LLM이 상황에 맞는 플로우를 골라 시작하는 tool. Jev로 이미 분류가 됐을
+// LLM이 상황에 맞는 플로우를 골라 시작하는 tool. Decisions API로 이미 분류가 됐을
 // 때(turnEngine.ts)는 이 tool 자체를 안 열어주고 직접 startTaskFlow를 부르니,
-// 이 tool은 Jev 분류가 애매했거나 꺼져있을 때의 폴백 경로로만 쓰인다.
+// 이 tool은 Decisions API 분류가 애매했거나 꺼져있을 때의 폴백 경로로만 쓰인다.
 export async function buildStartTaskFlowTool(organizationId: string, sessionId: string) {
   const flows = await loadEnabledFlows(organizationId);
   if (flows.length === 0) return null;

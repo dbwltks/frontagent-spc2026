@@ -16,6 +16,8 @@ export type OrganizationAiSettings = {
   voice_response_style: string;
   monthly_budget_limit_cents: number | null;
   monthly_token_limit: number | null;
+  company_name?: string | null;
+  greeting_message?: string | null;
 };
 
 export type OrganizationAiSettingsOptions = {
@@ -48,12 +50,16 @@ export type OrganizationAiSettingsForm = Omit<
   | "elevenlabs_voice_id"
   | "monthly_budget_limit_cents"
   | "monthly_token_limit"
+  | "company_name"
+  | "greeting_message"
 > & {
   decision_model: string;
   elevenlabs_model: string;
   elevenlabs_voice_id: string;
   monthly_budget_limit_cents: string;
   monthly_token_limit: string;
+  company_name: string;
+  greeting_message: string;
 };
 
 export const defaultOrganizationAiSettingsForm: OrganizationAiSettingsForm = {
@@ -74,6 +80,8 @@ export const defaultOrganizationAiSettingsForm: OrganizationAiSettingsForm = {
   voice_response_style: "friendly_short",
   monthly_budget_limit_cents: "",
   monthly_token_limit: "",
+  company_name: "",
+  greeting_message: "",
 };
 
 export const providerOptions = ["openai"];

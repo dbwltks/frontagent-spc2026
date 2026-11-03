@@ -1,4 +1,4 @@
-import { CheckCircle2, FileText, Zap } from "lucide-react";
+import { CheckCircle2, FileText, MessageSquare, Zap } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { SectionTitle } from "@/components/ui/PageHeader";
 import { Toggle } from "@/components/ui/Toggle";
@@ -56,6 +56,44 @@ export function LlmSettingsCard({
             disabled={disabled}
           />
         </div>
+      </div>
+    </Card>
+  );
+}
+
+export function ProfileSettingsCard({
+  form,
+  disabled,
+  setField,
+}: {
+  form: SettingsForm;
+  disabled: boolean;
+  setField: SettingsWorkspaceState["setField"];
+}) {
+  return (
+    <Card className="mt-5">
+      <SectionTitle icon={<MessageSquare className="h-5 w-5 text-blue-500" />} title="회사명 / 인사말" />
+      <div className="mt-5 space-y-4">
+        <SettingsInput
+          label="회사명 (상담원이 스스로를 소개할 때 사용)"
+          value={form.company_name}
+          onChange={(value) => setField("company_name", value)}
+          placeholder="예: 콜비"
+          maxLength={60}
+          disabled={disabled}
+        />
+        <label className="block rounded-[18px] bg-[#f7f7f7] p-4">
+          <span className="mb-2 block text-[12px] font-bold text-gray-400">첫 인사말 (고객이 인사하거나 통화가 시작될 때)</span>
+          <textarea
+            value={form.greeting_message}
+            onChange={(event) => setField("greeting_message", event.target.value)}
+            placeholder="비워 두면 기본 인사말을 사용합니다. 예: 안녕하세요, 콜비입니다. 무엇을 도와드릴까요?"
+            maxLength={300}
+            rows={3}
+            disabled={disabled}
+            className="w-full resize-none bg-transparent text-[15px] font-bold outline-none placeholder:text-gray-300 disabled:opacity-50"
+          />
+        </label>
       </div>
     </Card>
   );

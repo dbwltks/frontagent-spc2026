@@ -36,6 +36,7 @@ export const DEFAULT_ORGANIZATION_AI_SETTINGS = {
   // null이면 turnEngine이 기본 캔 인사말(여러 개 중 랜덤) 중 하나를 쓴다 —
   // 조직이 직접 첫 인사를 지정하고 싶을 때만 채운다.
   greeting_message: null as string | null,
+  company_name: null as string | null,
 };
 
 export type OrganizationAiSettingsPatch = Partial<
@@ -54,7 +55,8 @@ export type OrganizationAiSettingsPatch = Partial<
     | "voice_response_style"
     | "monthly_budget_limit_cents"
     | "monthly_token_limit"
-    | "greeting_message",
+    | "greeting_message"
+    | "company_name",
     unknown
   >
 >;
@@ -77,11 +79,19 @@ export function sanitizeSettingsPatch(body: Record<string, unknown>): Organizati
     "monthly_budget_limit_cents",
     "monthly_token_limit",
     "greeting_message",
+    "company_name",
   ] as const;
 
   const patch: OrganizationAiSettingsPatch = {};
   for (const key of allowedKeys) {
     if (key in body) patch[key] = body[key];
+  }
+  // 회사명/인사말은 프롬프트에 그대로 들어가므로 공백을 정리하고 길이를 제한한다. 비면 null(기본값).
+  for (const [key, max] of [["company_name", 60], ["greeting_message", 300]] as const) {
+    if (key in patch) {
+      const value = typeof patch[key] === "string" ? (patch[key] as string).trim().slice(0, max) : "";
+      patch[key] = value || null;
+    }
   }
   return patch;
 }

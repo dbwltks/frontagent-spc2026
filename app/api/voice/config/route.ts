@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 //
 // stt_mode만 voice_stt_provider를 보고 실제로 갈린다 — "batch"(녹음 다 끝나고
 // 업로드, 기존 방식) vs "streaming"(말하는 도중 Deepgram에 실시간 전송, A/B
-// 테스트용으로 추가). 둘 다 그 뒤 Jev→LLM→TTS 파이프라인은 동일하다.
+// 테스트용으로 추가). 둘 다 그 뒤 Decisions API→LLM→TTS 파이프라인은 동일하다.
 export async function GET(request: NextRequest) {
   const organizationId = request.nextUrl.searchParams.get("organization_id");
   if (!organizationId) {
@@ -23,12 +23,17 @@ export async function GET(request: NextRequest) {
     const supabase = createSupabaseServiceClient();
     const { data: settings } = await supabase
       .from("organization_ai_settings")
-      .select("voice_stt_provider")
+      .select("voice_stt_provider, greeting_message, company_name")
       .eq("organization_id", organizationId)
       .maybeSingle();
 
     const sttMode = settings?.voice_stt_provider === "deepgram_streaming" ? "streaming" : "batch";
-    return NextResponse.json({ mode: "pipeline", stt_mode: sttMode });
+    return NextResponse.json({
+      mode: "pipeline",
+      stt_mode: sttMode,
+      company_name: settings?.company_name ?? null,
+      greeting_message: settings?.greeting_message ?? null,
+    });
   } catch (err) {
     if (err instanceof OrganizationAccessError) {
       return NextResponse.json({ error: err.message }, { status: 403 });

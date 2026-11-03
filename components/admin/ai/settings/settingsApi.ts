@@ -25,6 +25,8 @@ export function toAiSettingsForm(settings: OrganizationAiSettings): Organization
     monthly_budget_limit_cents:
       settings.monthly_budget_limit_cents == null ? "" : String(settings.monthly_budget_limit_cents),
     monthly_token_limit: settings.monthly_token_limit == null ? "" : String(settings.monthly_token_limit),
+    company_name: settings.company_name ?? "",
+    greeting_message: settings.greeting_message ?? "",
   };
 }
 
@@ -49,6 +51,9 @@ export function buildAiSettingsPayload(form: OrganizationAiSettingsForm) {
       ? { monthly_budget_limit_cents: Number(form.monthly_budget_limit_cents) }
       : {}),
     ...(form.monthly_token_limit.trim() ? { monthly_token_limit: Number(form.monthly_token_limit) } : {}),
+    // 비워서 저장하면 null로 보내 기본 문구/이름으로 되돌린다.
+    company_name: form.company_name.trim() || null,
+    greeting_message: form.greeting_message.trim() || null,
   };
 }
 

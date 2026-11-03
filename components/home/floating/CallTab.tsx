@@ -189,6 +189,8 @@ export function CallTab({
   const [voiceMode, setVoiceMode] = useState<VoiceMode>("pipeline");
   const [hasMediaStream, setHasMediaStream] = useState(false);
   const sttModeRef = useRef<SttMode>("batch");
+  // 관리자 설정의 첫 인사말(없으면 기본 문구). 통화 시작 때 voice/config 응답으로 갱신된다.
+  const openingGreetingRef = useRef("안녕하세요, 콜비입니다. 무엇을 도와드릴까요?");
   const deepgramSocketRef = useRef<WebSocket | null>(null);
   const deepgramRecorderRef = useRef<MediaRecorder | null>(null);
   // 다음 발화가 시작되기 전에 미리 열어두는 "예열된" 소켓 — onSpeechStart
@@ -893,9 +895,8 @@ export function CallTab({
     });
   };
 
-  const OPENING_GREETING = "안녕하세요, 콜비입니다. 무엇을 도와드릴까요?";
-
   const playOpeningGreeting = async () => {
+    const OPENING_GREETING = openingGreetingRef.current;
     try {
       await playSpeech(OPENING_GREETING, "voice_opening", "상담 시작 안내", {
         signal: callAbortControllerRef.current?.signal,
@@ -1831,8 +1832,18 @@ export function CallTab({
         signal: callAbortController.signal,
       });
       if (!configResponse.ok) throw new Error(`음성 설정 조회 실패 (HTTP ${configResponse.status})`);
-      const configData = (await configResponse.json()) as { mode?: string; stt_mode?: string };
+      const configData = (await configResponse.json()) as {
+        mode?: string;
+        stt_mode?: string;
+        company_name?: string | null;
+        greeting_message?: string | null;
+      };
       if (callAbortController.signal.aborted) return;
+      const customGreeting = configData.greeting_message?.trim();
+      const companyName = configData.company_name?.trim();
+      openingGreetingRef.current =
+        customGreeting ||
+        (companyName ? `안녕하세요, ${companyName}입니다. 무엇을 도와드릴까요?` : "안녕하세요, 콜비입니다. 무엇을 도와드릴까요?");
       // 음성 통화는 STT->LLM->TTS pipeline(600~900ms)이 아니라 OpenAI Realtime
       // API(음성<->음성 직결, 250~500ms)를 우선한다. 서버가 조직 설정에 따라
       // mode를 내려주므로 그 값을 그대로 따른다.

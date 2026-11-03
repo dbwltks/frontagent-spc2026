@@ -2,6 +2,7 @@ import { RefreshCw, Save } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import {
   LlmSettingsCard,
+  ProfileSettingsCard,
   RecommendedTemplatesCard,
   VoiceSettingsCard,
 } from "./SettingsCards";
@@ -64,6 +65,8 @@ export function SettingsSection({ workspace }: { workspace: SettingsWorkspaceSta
             <LlmSettingsCard form={form} disabled={isBusy} setField={setField} />
             <VoiceSettingsCard workspace={workspace} disabled={isBusy} />
           </div>
+
+          <ProfileSettingsCard form={form} disabled={isBusy} setField={setField} />
 
           <RecommendedTemplatesCard
             templates={options.recommended_templates ?? []}

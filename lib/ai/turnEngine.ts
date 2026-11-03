@@ -51,9 +51,19 @@ async function loadOrCreateConversation(organizationId: string, sessionId: strin
   return created;
 }
 
-function composeSystemPrompt(voiceResponseStyle: string | null, rules: { name: string; instruction: string }[]) {
+type Identity = { companyName?: string | null; greeting?: string | null };
+
+function composeSystemPrompt(
+  voiceResponseStyle: string | null,
+  rules: { name: string; instruction: string }[],
+  identity: Identity = {},
+) {
+  const company = identity.companyName?.trim();
+  const greeting = identity.greeting?.trim();
   const lines = [
-    "너는 고객 응대 AI 상담원이다. 한국어로 답한다.",
+    company ? `너는 ${company}의 고객 응대 AI 상담원이다. 한국어로 답한다.` : "너는 고객 응대 AI 상담원이다. 한국어로 답한다.",
+    ...(company ? [`고객이 누구냐고 물으면 ${company}의 상담원이라고 소개한다.`] : []),
+    ...(greeting ? [`고객이 처음 인사하면 다음 인사말을 그대로 사용하라: "${greeting}"`] : []),
     STYLE_GUIDE[voiceResponseStyle ?? "friendly_short"],
     "모르는 내용은 search_knowledge로 검색하고, 지어내지 마라.",
     "예약 요청은 반드시 check_availability로 먼저 확인한 뒤 create_reservation을 호출하라.",
@@ -69,12 +79,12 @@ export async function* runTurn({ organizationId, sessionId, channel, userMessage
   // Promise.all보다 먼저, 혼자 순차로 한 번 더 왕복했다. conversation.id가
   // 꼭 있어야만 하는 두 가지(대화 히스토리 조회, 고객 메시지 기록)만 이
   // 배치가 끝난 뒤 별도로 처리하고, 나머지(설정/규칙/활성 세션/플로우 목록/
-  // Jev 분류)는 전부 conversation.id 없이도 되는 것들이라 여기서 같이 날린다.
+  // Decisions API 분류)는 전부 conversation.id 없이도 되는 것들이라 여기서 같이 날린다.
   const [conversation, settingsRow, rulesRows, activeSession, enabledFlows, intent] = await Promise.all([
     loadOrCreateConversation(organizationId, sessionId, channel),
     supabase
       .from("organization_ai_settings")
-      .select("llm_model, voice_response_style, greeting_message")
+      .select("llm_model, voice_response_style, greeting_message, company_name")
       .eq("organization_id", organizationId)
       .maybeSingle()
       .then(({ data }) => data),
@@ -92,7 +102,7 @@ export async function* runTurn({ organizationId, sessionId, channel, userMessage
     // "task" 분류로 갈 때 쓸 플로우 목록도 여기서 같이 당겨둔다 — 안 쓰더라도
     // 저렴한 읽기라, 순차로 또 왕복하는 것보다 미리 받아두는 게 낫다.
     loadEnabledFlows(organizationId),
-    // Jev(판단 전용 모델)로 이번 턴이 인사/감사/잡담/지식검색/업무처리 중
+    // Decisions API(판단 전용 모델)로 이번 턴이 인사/감사/잡담/지식검색/업무처리 중
     // 뭔지 미리 분류해둔다 — LLM한테 "tool을 쓸지 말지" 자체를 고민시키는
     // 라운드트립(수 초)을 없애는 게 목적. 키가 없거나 실패하면 null로
     // 폴백해서 기존처럼 LLM이 tool 전체를 보고 알아서 판단하게 둔다.
@@ -131,7 +141,10 @@ export async function* runTurn({ organizationId, sessionId, channel, userMessage
     }),
   ]);
 
-  const systemPrompt = composeSystemPrompt(settingsRow?.voice_response_style ?? null, rulesRows);
+  const systemPrompt = composeSystemPrompt(settingsRow?.voice_response_style ?? null, rulesRows, {
+    companyName: settingsRow?.company_name,
+    greeting: settingsRow?.greeting_message,
+  });
   const startedAt = Date.now();
   let answer = "";
   let errorMessage: string | null = null;
@@ -166,7 +179,7 @@ export async function* runTurn({ organizationId, sessionId, channel, userMessage
   let effectiveTools: ToolSet = tools;
   let ragContext: string | undefined;
 
-  // 완전히 새 턴(진행 중인 플로우 없음)이면 Jev의 사전 분류로 경로를 좁힌다 —
+  // 완전히 새 턴(진행 중인 플로우 없음)이면 Decisions API의 사전 분류로 경로를 좁힌다 —
   // "task"로 분류되면 여기서 바로 플로우를 시작해서, 위 활성 세션 재개 케이스와
   // 동일하게 flowStep을 채운다(= LLM의 start_task_flow tool-calling 라운드트립을
   // 또 하나 없앤다).
@@ -189,14 +202,18 @@ export async function* runTurn({ organizationId, sessionId, channel, userMessage
         const matches = await searchKnowledge(organizationId, userMessage, { matchCount: 5 });
         yield { type: "knowledge_start", queries: [userMessage] };
         ragContext = matches.map((m) => `- ${m.content}`).join("\n") || "(관련 내용 없음)";
-        effectiveTools = Object.fromEntries(Object.entries(tools).filter(([name]) => name !== "search_knowledge"));
+        // 사전 검색에서 아무것도 못 찾았을 때는 search_knowledge를 남겨둔다 — 다른 표현으로
+        // LLM이 한 번 더 검색해 볼 수 있어야 "모르겠다"로 너무 일찍 포기하지 않는다.
+        if (matches.length > 0) {
+          effectiveTools = Object.fromEntries(Object.entries(tools).filter(([name]) => name !== "search_knowledge"));
+        }
       } catch {
         // 사전 검색 실패 시 안전하게 전체 tools로 폴백(LLM이 직접 search_knowledge를 부르게).
       }
     } else if (intent.choice === "task") {
       try {
         const flowChoice = await classifyTaskFlowChoice(userMessage, enabledFlows);
-        // Jev가 criteria에 없는 값을 돌려줄 리는 없지만(hallucination 방어),
+        // Decisions API가 criteria에 없는 값을 돌려줄 리는 없지만(hallucination 방어),
         // flow_id가 실제 목록에 있는지 한 번 더 확인하고서야 세션을 만든다 —
         // 아니면 task_sessions.flow_id FK 제약을 어겨 insert가 그냥 실패한다.
         if (flowChoice && flowChoice.choice !== "none" && enabledFlows.some((f) => f.id === flowChoice.choice)) {

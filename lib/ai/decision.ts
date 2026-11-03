@@ -1,10 +1,12 @@
-// Jev(TypeSafe System One) — 문장을 생성하지 않고 정해둔 선택지 중 하나를
-// 고르는 "판단 전용" 모델. 0.4초/$0.0004 수준이라, LLM한테 tool 선택만
-// 맡기려고 통째로 한 스텝 태우는 것보다 훨씬 싸고 빠르다.
-// TYPESAFE_API_KEY가 없으면 이 모듈을 쓰는 쪽에서 그냥 건너뛰고 기존
+// OpenAI Decisions API(POST /v1/decisions) — 문장을 생성하지 않고 정해둔 선택지
+// 중 하나를 고르는 "판단 전용" 호출. 출력 토큰이 과금되지 않고 Responses API보다
+// 훨씬 빨라서, LLM한테 tool 선택만 맡기려고 통째로 한 스텝 태우는 것보다 싸고 빠르다.
+// OPENAI_API_KEY가 없으면 이 모듈을 쓰는 쪽에서 그냥 건너뛰고 기존
 // tool-calling 경로로 폴백해야 한다 — 이 함수는 그 판단에 필요한 신호만 준다.
 
-const TYPESAFE_ENDPOINT = "https://api.typesafe.ai/v1/systemone";
+const DECISIONS_ENDPOINT = "https://api.openai.com/v1/decisions";
+// 문서상 현재 Decisions API가 지원하는 모델은 gpt-6-luna뿐이다.
+const DECISIONS_MODEL = "gpt-6-luna";
 
 export type ChoiceCriteria = Record<string, string>;
 
@@ -14,8 +16,16 @@ export type ChoiceResult = {
   probabilities: Record<string, number>;
 };
 
+type DecisionAnswer = {
+  type: string;
+  name: string;
+  choice?: string;
+  confidence?: number;
+  probabilities?: { value: string; probability: number }[];
+};
+
 export function isDecisionModelAvailable() {
-  return Boolean(process.env.TYPESAFE_API_KEY);
+  return Boolean(process.env.OPENAI_API_KEY);
 }
 
 export async function decideChoice(params: {
@@ -24,30 +34,43 @@ export async function decideChoice(params: {
   criteria: ChoiceCriteria;
   model?: string;
 }): Promise<ChoiceResult> {
-  const apiKey = process.env.TYPESAFE_API_KEY;
-  if (!apiKey) throw new Error("TYPESAFE_API_KEY가 설정되지 않았습니다.");
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error("OPENAI_API_KEY가 설정되지 않았습니다.");
 
-  const response = await fetch(TYPESAFE_ENDPOINT, {
+  const response = await fetch(DECISIONS_ENDPOINT, {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: params.model ?? "jev-latest",
-      state: params.state,
-      questions: {
-        decision: { type: "choice", instructions: params.instructions, criteria: params.criteria },
-      },
+      model: params.model ?? DECISIONS_MODEL,
+      input: params.state,
+      questions: [
+        {
+          type: "choice",
+          name: "decision",
+          instructions: params.instructions,
+          choices: Object.entries(params.criteria).map(([value, description]) => ({ value, description })),
+        },
+      ],
     }),
   });
 
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
-    throw new Error(`Jev 판단 요청 실패 (HTTP ${response.status}): ${detail.slice(0, 300)}`);
+    throw new Error(`OpenAI 판단 요청 실패 (HTTP ${response.status}): ${detail.slice(0, 300)}`);
   }
 
-  // 실제 응답은 { model, answers: { decision: {...} }, usage } 형태로 온다 —
-  // 문서상 예시들은 이 "answers" 래퍼를 안 보여줘서 처음엔 빠뜨렸었다.
-  const data = (await response.json()) as { answers: { decision: ChoiceResult } };
-  return data.answers.decision;
+  const data = (await response.json()) as { answers?: DecisionAnswer[] };
+  const answer = data.answers?.find((a) => a.name === "decision");
+  // refusal 답변이 올 수 있다 — 선택값이 없으면 실패로 보고 호출부가 폴백하게 한다.
+  if (!answer || answer.type !== "choice" || !answer.choice) {
+    throw new Error(`OpenAI 판단 응답을 해석할 수 없습니다 (type: ${answer?.type ?? "없음"})`);
+  }
+
+  return {
+    choice: answer.choice,
+    confidence: answer.confidence ?? 0,
+    probabilities: Object.fromEntries((answer.probabilities ?? []).map((p) => [p.value, p.probability])),
+  };
 }
 
 // 이번 사용자 발화가 지식검색/업무처리/잡담 중 뭘 요구하는지 빠르게 분류한다.
@@ -59,7 +82,7 @@ export async function classifyTurnIntent(userMessage: string, hasEnabledTaskFlow
     // chat을 greeting/thanks/other로 더 쪼갠 이유: 인사·감사는 LLM 생성 없이
     // 미리 써둔 답 중 하나를 즉시 내보낼 수 있어서(= LLM 호출 자체를 스킵),
     // 분류 단계에서부터 구분해둬야 turnEngine이 그 지름길을 탈 수 있다.
-    // 이것도 Jev가 직접 고르는 것이지 키워드 매칭이 아니다.
+    // 이것도 Decisions API가 직접 고르는 것이지 키워드 매칭이 아니다.
     chat_greeting: "인사말 — 안녕하세요, 안녕히계세요, 처음뵙겠습니다 등",
     chat_thanks: "감사 인사 — 고맙습니다, 감사합니다, 수고하세요 등",
     chat_other: "그 외 잡담, 맞장구, 애매한 말 등 정보 검색이나 업무 처리가 필요 없는 대화",
@@ -91,7 +114,7 @@ export const CANNED_REPLIES: Record<string, string[]> = {
   ],
 };
 
-// "task" 의도로 분류된 뒤, 활성화된 플로우 중 어떤 걸 시작할지도 Jev가 직접
+// "task" 의도로 분류된 뒤, 활성화된 플로우 중 어떤 걸 시작할지도 Decisions API가 직접
 // 고르게 한다 — 이것도 LLM tool-calling 라운드트립(flow_id 선택) 하나를 없앤다.
 // 어떤 플로우에도 안 맞을 수 있어서 "none" 선택지를 항상 같이 넣는다.
 export async function classifyTaskFlowChoice(
