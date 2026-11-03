@@ -2,6 +2,7 @@ import { CheckCircle2, FileText, MessageSquare, Zap } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { SectionTitle } from "@/components/ui/PageHeader";
 import { Toggle } from "@/components/ui/Toggle";
+import { ModelInfoButton } from "./ModelInfoDialog";
 import { SettingsInput, SettingsSelect } from "./SettingsFields";
 import { providerOptions, type OrganizationAiSettings } from "./types";
 import type { SettingsWorkspaceState } from "./useSettingsWorkspace";
@@ -21,7 +22,10 @@ export function LlmSettingsCard({
 }) {
   return (
     <Card>
-      <SectionTitle icon={<CheckCircle2 className="h-5 w-5 text-blue-500" />} title="LLM 설정" />
+      <div className="flex items-center justify-between gap-3">
+        <SectionTitle icon={<CheckCircle2 className="h-5 w-5 text-blue-500" />} title="LLM 설정" />
+        <ModelInfoButton kind="llm" activeIds={[form.llm_model]} />
+      </div>
       <div className="mt-5 space-y-4">
         <SettingsSelect
           label="Provider"
@@ -102,10 +106,16 @@ export function VoiceSettingsCard({
 
   return (
     <Card>
-      <SectionTitle
-        icon={<FileText className="h-5 w-5 text-blue-500" />}
-        title={isRealtimeMode ? "Realtime 음성 모델" : "Pipeline 음성 모델"}
-      />
+      <div className="flex items-center justify-between gap-3">
+        <SectionTitle
+          icon={<FileText className="h-5 w-5 text-blue-500" />}
+          title={isRealtimeMode ? "Realtime 음성 모델" : "Pipeline 음성 모델"}
+        />
+        <ModelInfoButton
+          kind="voice"
+          activeIds={[form.voice_stt_model, form.voice_tts_model, form.elevenlabs_model]}
+        />
+      </div>
       <div className="mt-5 grid gap-4 md:grid-cols-2">
         <SettingsSelect
           label="음성 처리 방식"

@@ -16,13 +16,13 @@ export const SETTINGS_OPTIONS = {
   tts_providers: ["openai", "elevenlabs"],
   tts_models_by_provider: {
     openai: ["gpt-4o-mini-tts"],
-    elevenlabs: ["eleven_flash_v2_5", "eleven_v3", "eleven_turbo_v2_5", "eleven_multilingual_v2"],
+    elevenlabs: ["eleven_flash_v2_5", "eleven_v4_turbo", "eleven_v3_conversational", "eleven_multilingual_v2", "eleven_v4"],
   },
   // OpenAI TTS는 모델별 voice 이름으로 고르고, ElevenLabs는 voice_id를 직접 입력한다.
   tts_voices_by_model: {
     "gpt-4o-mini-tts": ["marin", "cedar", "alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse"],
   },
-  elevenlabs_models: ["eleven_flash_v2_5", "eleven_v3", "eleven_turbo_v2_5", "eleven_multilingual_v2"],
+  elevenlabs_models: ["eleven_flash_v2_5", "eleven_v4_turbo", "eleven_v3_conversational", "eleven_multilingual_v2", "eleven_v4"],
   realtime_models: [],
   realtime_voices: [],
   voice_response_styles: ["friendly_short", "professional_short", "casual_short"],
