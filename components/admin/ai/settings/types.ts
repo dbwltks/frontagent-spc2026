@@ -21,6 +21,7 @@ export type OrganizationAiSettings = {
 };
 
 export type OrganizationAiSettingsOptions = {
+  llm_models?: string[];
   voice_modes?: string[];
   voice_response_styles?: string[];
   stt_providers?: string[];
@@ -64,12 +65,12 @@ export type OrganizationAiSettingsForm = Omit<
 
 export const defaultOrganizationAiSettingsForm: OrganizationAiSettingsForm = {
   llm_provider: "openai",
-  llm_model: "gpt-4.1-mini",
+  llm_model: "gpt-6-luna",
   decision_model: "",
   voice_enabled: true,
   voice_mode: "pipeline",
   voice_stt_provider: "openai",
-  voice_stt_model: "gpt-4o-mini-transcribe",
+  voice_stt_model: "gpt-transcribe",
   voice_tts_provider: "openai",
   voice_tts_model: "gpt-4o-mini-tts",
   voice_tts_voice: "marin",
@@ -85,4 +86,5 @@ export const defaultOrganizationAiSettingsForm: OrganizationAiSettingsForm = {
 };
 
 export const providerOptions = ["openai"];
-export const llmModelOptions = ["gpt-4.1-mini", "gpt-4.1", "gpt-4o-mini", "gpt-4o"];
+// 서버(/organization-ai-settings)가 options.llm_models를 내려주지 못했을 때의 폴백.
+export const llmModelOptions = ["gpt-6-luna", "gpt-6.1-terra", "gpt-6-sol", "gpt-6.1-sol", "gpt-6-astra"];

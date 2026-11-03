@@ -3,7 +3,7 @@ import { OrganizationAccessError, resolvePublicOrganization } from "../../../../
 import { looksLikeHallucination, transcribeAudio } from "../../../../../../lib/ai/stt";
 import { runTurn } from "../../../../../../lib/ai/turnEngine";
 import { createSseResponse } from "../../../../../../lib/sse";
-import { ClauseSplitter, getCachedFillerAudio, synthesizeSpeech } from "../../../../../../lib/ai/tts";
+import { ClauseSplitter, getCachedFillerAudio, resolveTtsConfig, synthesizeSpeech } from "../../../../../../lib/ai/tts";
 import { createSupabaseServiceClient } from "../../../../../../lib/supabase/service";
 
 export const runtime = "nodejs";
@@ -35,12 +35,11 @@ export async function POST(request: NextRequest) {
     const supabase = createSupabaseServiceClient();
     const { data: settings } = await supabase
       .from("organization_ai_settings")
-      .select("elevenlabs_voice_id, elevenlabs_model, voice_stt_model")
+      .select("elevenlabs_voice_id, elevenlabs_model, voice_stt_model, voice_tts_provider, voice_tts_model, voice_tts_voice")
       .eq("organization_id", organizationId)
       .maybeSingle();
 
-    const voiceId = settings?.elevenlabs_voice_id ?? process.env.ELEVENLABS_VOICE_ID ?? null;
-    const elevenlabsModel = settings?.elevenlabs_model ?? undefined;
+    const tts = resolveTtsConfig(settings);
 
     // SSE를 열기 전에 STT를 동기로 끝낸다 — 무음이면 순수 422 JSON(기존 계약)으로
     // 응답하고, 말이 있으면 그때 SSE를 열어 turn_start/transcript를 바로 보낸다.
@@ -64,9 +63,9 @@ export async function POST(request: NextRequest) {
         // STT는 끝났지만 LLM+RAG+TTS 처리가 아직 남은 구간(수 초)을 가리는
         // 필러 음성 — 캐싱돼 있어서 사실상 즉시 나간다. 실제 지연을 줄이는 게
         // 아니라 "듣고 있다"는 반응을 바로 줘서 체감 지연을 없애는 트릭이다.
-        if (voiceId) {
+        if (tts) {
           try {
-            const { audio: fillerBuf, contentType: fillerType } = await getCachedFillerAudio(voiceId, elevenlabsModel, "네, 확인해볼게요.");
+            const { audio: fillerBuf, contentType: fillerType } = await getCachedFillerAudio(tts.voiceId, tts.modelId, "네, 확인해볼게요.", tts.provider);
             if (!signal.aborted) {
               send("audio", { audio_base64: fillerBuf.toString("base64"), content_type: fillerType, index: audioIndex });
               audioIndex += 1;
@@ -77,9 +76,9 @@ export async function POST(request: NextRequest) {
         }
 
         const speakClause = async (clause: string) => {
-          if (!voiceId || signal.aborted || !clause.trim()) return;
+          if (!tts || signal.aborted || !clause.trim()) return;
           try {
-            const { audio: buf, contentType } = await synthesizeSpeech(clause, { voiceId, modelId: elevenlabsModel });
+            const { audio: buf, contentType } = await synthesizeSpeech(clause, tts);
             if (signal.aborted) return;
             send("audio", { audio_base64: buf.toString("base64"), content_type: contentType, index: audioIndex });
             audioIndex += 1;

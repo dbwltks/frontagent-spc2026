@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/Card";
 import { SectionTitle } from "@/components/ui/PageHeader";
 import { Toggle } from "@/components/ui/Toggle";
 import { SettingsInput, SettingsSelect } from "./SettingsFields";
-import { llmModelOptions, providerOptions, type OrganizationAiSettings } from "./types";
+import { providerOptions, type OrganizationAiSettings } from "./types";
 import type { SettingsWorkspaceState } from "./useSettingsWorkspace";
 
 type SettingsForm = SettingsWorkspaceState["form"];
@@ -12,10 +12,12 @@ export function LlmSettingsCard({
   form,
   disabled,
   setField,
+  models,
 }: {
   form: SettingsForm;
   disabled: boolean;
   setField: SettingsWorkspaceState["setField"];
+  models: string[];
 }) {
   return (
     <Card>
@@ -31,18 +33,8 @@ export function LlmSettingsCard({
         <SettingsSelect
           label="응답 모델"
           value={form.llm_model}
-          options={llmModelOptions}
+          options={models.includes(form.llm_model) ? models : [form.llm_model, ...models]}
           onChange={(value) => setField("llm_model", value)}
-          disabled={disabled}
-        />
-        <SettingsSelect
-          label="판단 모델"
-          value={form.decision_model}
-          options={[
-            { value: "", label: "응답 모델과 동일" },
-            ...llmModelOptions.map((model) => ({ value: model, label: model })),
-          ]}
-          onChange={(value) => setField("decision_model", value)}
           disabled={disabled}
         />
         <div className="flex items-center justify-between rounded-[18px] bg-[#f7f7f7] p-4">

@@ -266,7 +266,8 @@ export async function* runTurn({ organizationId, sessionId, channel, userMessage
         // 필요한 용도엔 불필요하게 느리다. "none"/"minimal"은 gpt-6-luna가
         // 지원 안 해서(SDK가 조용히 무시하고 medium으로 폴백함) "low"가 실제로
         // 쓸 수 있는 최솟값이다.
-        providerOptions: { openai: { reasoningEffort: "low" } },
+        // gpt-4.x 계열은 reasoning.effort 자체를 받지 않아 400이 나므로 reasoning 모델에만 보낸다.
+        providerOptions: /^gpt-4/.test(settingsRow?.llm_model ?? "") ? undefined : { openai: { reasoningEffort: "low" } },
       });
 
       for await (const part of result.fullStream) {

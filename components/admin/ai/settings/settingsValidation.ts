@@ -5,6 +5,7 @@ export function validateAiSettingsForm(
   form: OrganizationAiSettingsForm,
   options: OrganizationAiSettingsOptions,
 ) {
+  const llmOptions = options.llm_models ?? llmModelOptions;
   const voiceModeOptions = options.voice_modes ?? ["pipeline", "realtime"];
   const responseStyleOptions = options.voice_response_styles ?? [
     "friendly_short",
@@ -25,8 +26,7 @@ export function validateAiSettingsForm(
 
   const checks = [
     [providerOptions.includes(form.llm_provider), "Provider를 목록에서 선택하세요."],
-    [llmModelOptions.includes(form.llm_model), "응답 모델을 목록에서 선택하세요."],
-    [!form.decision_model || llmModelOptions.includes(form.decision_model), "판단 모델을 목록에서 선택하세요."],
+    [llmOptions.includes(form.llm_model), "응답 모델을 목록에서 선택하세요."],
     [voiceModeOptions.includes(form.voice_mode), "음성 처리 방식을 목록에서 선택하세요."],
     [responseStyleOptions.includes(form.voice_response_style), "응답 스타일을 목록에서 선택하세요."],
     [

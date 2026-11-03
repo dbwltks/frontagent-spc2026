@@ -6,6 +6,7 @@ import {
   RecommendedTemplatesCard,
   VoiceSettingsCard,
 } from "./SettingsCards";
+import { llmModelOptions } from "./types";
 import type { SettingsWorkspaceState } from "./useSettingsWorkspace";
 
 export function SettingsSection({ workspace }: { workspace: SettingsWorkspaceState }) {
@@ -61,8 +62,13 @@ export function SettingsSection({ workspace }: { workspace: SettingsWorkspaceSta
 
       {hasLoaded && (
         <>
-          <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
-            <LlmSettingsCard form={form} disabled={isBusy} setField={setField} />
+          <div className="grid gap-5">
+            <LlmSettingsCard
+              form={form}
+              disabled={isBusy}
+              setField={setField}
+              models={options.llm_models ?? llmModelOptions}
+            />
             <VoiceSettingsCard workspace={workspace} disabled={isBusy} />
           </div>
 

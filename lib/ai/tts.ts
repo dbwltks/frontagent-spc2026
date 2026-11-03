@@ -1,17 +1,40 @@
 const ELEVENLABS_API_BASE = "https://api.elevenlabs.io/v1";
 
+export type TtsProvider = "elevenlabs" | "openai";
+
 export type SynthesizeOptions = {
+  // elevenlabs는 voice_id, openai는 voice 이름(예: "marin")이다.
   voiceId: string;
   modelId?: string;
+  provider?: TtsProvider;
 };
+
+async function synthesizeOpenAiSpeech(text: string, voice: string, model: string) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error("OPENAI_API_KEY가 설정되지 않았습니다.");
+
+  const response = await fetch("https://api.openai.com/v1/audio/speech", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ model, voice, input: text, response_format: "mp3" }),
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(`OpenAI TTS 실패 (HTTP ${response.status}): ${detail.slice(0, 300)}`);
+  }
+  return { audio: Buffer.from(await response.arrayBuffer()), contentType: "audio/mpeg" };
+}
 
 // ElevenLabs REST 스트리밍 엔드포인트를 절(clause) 단위로 호출한다. 텍스트가
 // 짧아서(한두 문장) 응답 전체를 버퍼링해도 지연에 미치는 영향이 작다 —
 // 진짜 저지연이 더 필요해지면 여기를 청크 단위 파이프로 바꾸면 된다.
 export async function synthesizeSpeech(
   text: string,
-  { voiceId, modelId = "eleven_flash_v2_5" }: SynthesizeOptions,
+  { voiceId, modelId, provider = "elevenlabs" }: SynthesizeOptions,
 ): Promise<{ audio: Buffer; contentType: string }> {
+  if (provider === "openai") return synthesizeOpenAiSpeech(text, voiceId || "marin", modelId ?? "gpt-4o-mini-tts");
+  modelId ??= "eleven_flash_v2_5";
+
   const apiKey = process.env.ELEVENLABS_API_KEY;
   if (!apiKey) throw new Error("ELEVENLABS_API_KEY가 설정되지 않았습니다.");
   if (!voiceId) throw new Error("ElevenLabs voice_id가 설정되지 않았습니다.");
@@ -45,11 +68,16 @@ export async function synthesizeSpeech(
 // 실질적으로 0에 가깝게 만든다(진짜 지연을 줄이는 게 아니라 가리는 트릭).
 const fillerCache = new Map<string, Promise<{ audio: Buffer; contentType: string }>>();
 
-export function getCachedFillerAudio(voiceId: string, modelId: string | undefined, phrase: string) {
-  const key = `${voiceId}::${modelId ?? "default"}::${phrase}`;
+export function getCachedFillerAudio(
+  voiceId: string,
+  modelId: string | undefined,
+  phrase: string,
+  provider: TtsProvider = "elevenlabs",
+) {
+  const key = `${provider}::${voiceId}::${modelId ?? "default"}::${phrase}`;
   let entry = fillerCache.get(key);
   if (!entry) {
-    entry = synthesizeSpeech(phrase, { voiceId, modelId });
+    entry = synthesizeSpeech(phrase, { voiceId, modelId, provider });
     entry.catch(() => fillerCache.delete(key)); // 실패하면 캐시에 안 남겨서 다음 턴에 재시도되게 한다.
     fillerCache.set(key, entry);
   }
@@ -101,4 +129,26 @@ export class ClauseSplitter {
     this.buffer = "";
     return rest || null;
   }
+}
+
+export type TtsSettingsRow = {
+  voice_tts_provider?: string | null;
+  voice_tts_model?: string | null;
+  voice_tts_voice?: string | null;
+  elevenlabs_voice_id?: string | null;
+  elevenlabs_model?: string | null;
+};
+
+// 조직 설정에서 실제 합성에 쓸 provider/voice/model을 고른다. 쓸 수 있는 voice가 없으면 null.
+export function resolveTtsConfig(settings: TtsSettingsRow | null | undefined) {
+  if (settings?.voice_tts_provider === "openai") {
+    return {
+      provider: "openai" as const,
+      voiceId: settings.voice_tts_voice?.trim() || "marin",
+      modelId: settings.voice_tts_model?.trim() || "gpt-4o-mini-tts",
+    };
+  }
+  const voiceId = settings?.elevenlabs_voice_id ?? process.env.ELEVENLABS_VOICE_ID ?? null;
+  if (!voiceId) return null;
+  return { provider: "elevenlabs" as const, voiceId, modelId: settings?.elevenlabs_model ?? undefined };
 }

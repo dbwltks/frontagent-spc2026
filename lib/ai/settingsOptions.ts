@@ -2,16 +2,29 @@
 // 좁히기로 한 결정에 맞춰, DB가 아니라 코드에 고정값으로 둔다 — 나중에 제공자가
 // 늘어나면 여기만 넓히면 된다.
 export const SETTINGS_OPTIONS = {
-  llm_models: ["gpt-6-luna", "gpt-5.6-luna", "gpt-4.1-mini", "gpt-4.1"],
+  // 저렴/빠름 → 고성능 순. GPT-6 계열만 노출한다(OpenAI Responses API 호출로 확인).
+  llm_models: ["gpt-6-luna", "gpt-6.1-terra", "gpt-6-sol", "gpt-6.1-sol", "gpt-6-astra"],
+  // 음성은 pipeline(STT→LLM→TTS)만 지원한다. realtime은 만들지 않기로 한 결정.
+  voice_modes: ["pipeline"],
+  stt_providers: ["openai", "deepgram_streaming"],
   stt_models_by_provider: {
-    openai: ["gpt-4o-mini-transcribe", "gpt-4o-transcribe", "whisper-1"],
+    openai: ["gpt-transcribe"],
     // 브라우저가 Deepgram에 WebSocket으로 직접 붙어 말하는 도중 실시간 전사한다
     // (batch 업로드 방식과 나란히 A/B 테스트하려고 추가 — voice_stt_provider로 토글).
     deepgram_streaming: ["nova-3"],
   },
+  tts_providers: ["openai", "elevenlabs"],
   tts_models_by_provider: {
-    elevenlabs: ["eleven_flash_v2_5", "eleven_turbo_v2_5", "eleven_multilingual_v2"],
+    openai: ["gpt-4o-mini-tts"],
+    elevenlabs: ["eleven_flash_v2_5", "eleven_v3", "eleven_turbo_v2_5", "eleven_multilingual_v2"],
   },
+  // OpenAI TTS는 모델별 voice 이름으로 고르고, ElevenLabs는 voice_id를 직접 입력한다.
+  tts_voices_by_model: {
+    "gpt-4o-mini-tts": ["marin", "cedar", "alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse"],
+  },
+  elevenlabs_models: ["eleven_flash_v2_5", "eleven_v3", "eleven_turbo_v2_5", "eleven_multilingual_v2"],
+  realtime_models: [],
+  realtime_voices: [],
   voice_response_styles: ["friendly_short", "professional_short", "casual_short"],
 } as const;
 
@@ -22,7 +35,7 @@ export const DEFAULT_ORGANIZATION_AI_SETTINGS = {
   voice_enabled: true,
   voice_mode: "pipeline" as const,
   voice_stt_provider: "openai",
-  voice_stt_model: "gpt-4o-mini-transcribe",
+  voice_stt_model: "gpt-transcribe",
   voice_tts_provider: "elevenlabs",
   voice_tts_model: "eleven_flash_v2_5",
   voice_tts_voice: "",

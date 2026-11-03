@@ -13,7 +13,7 @@ export function toAiSettingsForm(settings: OrganizationAiSettings): Organization
     voice_enabled: settings.voice_enabled ?? true,
     voice_mode: settings.voice_mode ?? "pipeline",
     voice_stt_provider: settings.voice_stt_provider ?? "openai",
-    voice_stt_model: settings.voice_stt_model ?? "gpt-4o-mini-transcribe",
+    voice_stt_model: settings.voice_stt_model ?? "gpt-transcribe",
     voice_tts_provider: settings.voice_tts_provider ?? "openai",
     voice_tts_model: settings.voice_tts_model ?? "gpt-4o-mini-tts",
     voice_tts_voice: settings.voice_tts_voice ?? "marin",

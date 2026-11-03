@@ -14,7 +14,7 @@ function getClient() {
 // 스트리밍 partial transcript는 이후 최적화 단계에서 붙인다.
 export async function transcribeAudio(
   file: File,
-  model = "gpt-4o-mini-transcribe",
+  model = "gpt-transcribe",
 ): Promise<{ text: string }> {
   const openai = getClient();
   const result = await openai.audio.transcriptions.create({

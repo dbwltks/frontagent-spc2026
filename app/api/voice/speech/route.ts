@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServiceClient } from "../../../../lib/supabase/service";
 import { OrganizationAccessError, resolvePublicOrganization } from "../../../../lib/org/resolveOrganization";
-import { synthesizeSpeech } from "../../../../lib/ai/tts";
+import { resolveTtsConfig, synthesizeSpeech } from "../../../../lib/ai/tts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,19 +27,17 @@ export async function POST(request: NextRequest) {
   const supabase = createSupabaseServiceClient();
   const { data: settings } = await supabase
     .from("organization_ai_settings")
-    .select("elevenlabs_voice_id, elevenlabs_model")
+    .select("elevenlabs_voice_id, elevenlabs_model, voice_tts_provider, voice_tts_model, voice_tts_voice")
     .eq("organization_id", organizationId)
     .maybeSingle();
 
-  if (!settings?.elevenlabs_voice_id) {
-    return NextResponse.json({ error: "이 조직에 ElevenLabs voice_id가 설정되지 않았습니다." }, { status: 500 });
+  const tts = resolveTtsConfig(settings);
+  if (!tts) {
+    return NextResponse.json({ error: "이 조직에 TTS voice가 설정되지 않았습니다." }, { status: 500 });
   }
 
   try {
-    const { audio, contentType } = await synthesizeSpeech(text, {
-      voiceId: settings.elevenlabs_voice_id,
-      modelId: settings.elevenlabs_model ?? undefined,
-    });
+    const { audio, contentType } = await synthesizeSpeech(text, tts);
     return new Response(new Uint8Array(audio), { headers: { "Content-Type": contentType } });
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 });
