@@ -7,6 +7,7 @@ import { Dialog, DialogBody, DialogHeader } from "@/components/ui/Dialog";
 import {
   estimateTurnCostUsd,
   LLM_MODEL_INFO,
+  LLM_SOURCES,
   STT_MODEL_INFO,
   TTS_MODEL_INFO,
   TURN_INPUT_TOKENS,
@@ -33,12 +34,24 @@ function ModelRow({ model, active, extra }: { model: ModelInfo; active: boolean;
           <span className="rounded-full bg-blue-600 px-2 py-0.5 text-[11px] font-bold text-white">사용 중</span>
         )}
       </div>
-      <p className="mt-1.5 text-[13px] font-semibold leading-relaxed text-gray-600">{model.summary}</p>
+      {model.summary && (
+        <p className="mt-1.5 text-[13px] font-semibold leading-relaxed text-gray-600">{model.summary}</p>
+      )}
       <dl className="mt-3 grid gap-x-4 gap-y-1 text-[12px] font-bold sm:grid-cols-[auto_1fr]">
         <dt className="text-gray-400">가격</dt>
         <dd className="text-gray-800">{model.price}</dd>
-        <dt className="text-gray-400">속도</dt>
-        <dd className="text-gray-800">{model.speed}</dd>
+        {model.officialSpeed && (
+          <>
+            <dt className="text-gray-400">속도(공식)</dt>
+            <dd className="text-gray-800">{model.officialSpeed}</dd>
+          </>
+        )}
+        {model.measured && (
+          <>
+            <dt className="text-gray-400">속도(실측)</dt>
+            <dd className="text-gray-800">{model.measured}</dd>
+          </>
+        )}
         {extra && (
           <>
             <dt className="text-gray-400">상담 1턴</dt>
@@ -47,6 +60,22 @@ function ModelRow({ model, active, extra }: { model: ModelInfo; active: boolean;
         )}
       </dl>
     </div>
+  );
+}
+
+function Sources({ sources }: { sources: { label: string; url: string }[] }) {
+  return (
+    <p className="text-[11px] font-semibold text-gray-400">
+      출처:{" "}
+      {sources.map((source, index) => (
+        <span key={source.url}>
+          {index > 0 && " · "}
+          <a href={source.url} target="_blank" rel="noreferrer" className="underline hover:text-blue-600">
+            {source.label}
+          </a>
+        </span>
+      ))}
+    </p>
   );
 }
 
@@ -62,6 +91,7 @@ function Groups({ groups, activeIds }: { groups: ModelGroup[]; activeIds: string
           {group.models.map((model) => (
             <ModelRow key={model.id} model={model} active={activeIds.includes(model.id)} />
           ))}
+          <Sources sources={group.sources} />
         </section>
       ))}
     </>
@@ -90,7 +120,7 @@ export function ModelInfoButton({
           description={
             kind === "llm"
               ? `상담 1턴은 입력 ${TURN_INPUT_TOKENS.toLocaleString()}토큰 · 출력 ${TURN_OUTPUT_TOKENS}토큰으로 가정한 예상 비용입니다.`
-              : "가격은 공급사 공식 가격표, 속도는 이 프로젝트에서 직접 호출해 잰 값입니다. 실제 환경에서는 달라질 수 있습니다."
+              : "가격과 설명은 공급사 공식 문서 기준입니다. \"실측\"은 이 프로젝트에서 직접 잰 값이라 실제 환경에서는 달라질 수 있습니다."
           }
           onClose={() => setOpen(false)}
         />
@@ -105,6 +135,7 @@ export function ModelInfoButton({
                   extra={`약 ${formatUsd(estimateTurnCostUsd(model))}`}
                 />
               ))}
+              <Sources sources={LLM_SOURCES} />
             </div>
           ) : (
             <>

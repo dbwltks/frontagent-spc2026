@@ -1,25 +1,40 @@
-// 설정 화면의 "모델 비교" 창이 보여주는 참고 정보. 가격은 공급사 공식 가격표(2026-11 확인),
-// 속도는 이 프로젝트 계정에서 직접 호출해 잰 값이다. 가격이 바뀌면 여기만 고친다.
-// 선택 가능한 목록 자체는 settingsOptions.ts가 정하고, 이 파일은 설명만 덧붙인다.
+// 설정 화면의 "모델 비교" 창이 보여주는 참고 정보.
+// 가격과 설명은 공급사 공식 문서(2026-11 확인)만 옮겼고, 공식 문서에 없는 항목은 비워 둔다.
+// `measured`는 이 프로젝트 계정에서 직접 호출해 잰 값이라 화면에서 따로 "실측"으로 표시한다.
+// 가격이 바뀌면 여기만 고친다. 선택 가능한 목록 자체는 settingsOptions.ts가 정한다.
+
+export const OPENAI_PRICING_URL = "https://developers.openai.com/api/docs/pricing";
+export const OPENAI_MODELS_URL = "https://developers.openai.com/api/docs/models";
+export const ELEVENLABS_MODELS_URL = "https://elevenlabs.io/docs/overview/models";
+export const ELEVENLABS_PRICING_URL = "https://elevenlabs.io/pricing/api";
 
 export type ModelInfo = {
   id: string;
   name: string;
-  /** 사람이 읽는 가격 문구 */
+  /** 공식 가격표의 가격 */
   price: string;
-  /** 속도 설명(측정값이면 측정 조건이 notes에 있다) */
-  speed: string;
-  summary: string;
+  /** 공식 문서의 설명. 없으면 비운다. */
+  summary?: string;
+  /** 공식 문서가 밝힌 속도/지연. 없으면 비운다. */
+  officialSpeed?: string;
+  /** 이 프로젝트에서 직접 잰 값 */
+  measured?: string;
+  /** 우리 용도(한국어 상담)에서 추천하는 모델 */
   recommended?: boolean;
 };
 
-export type ModelGroup = { title: string; note?: string; models: ModelInfo[] };
+export type ModelGroup = { title: string; note?: string; sources: { label: string; url: string }[]; models: ModelInfo[] };
 
 // 상담 1턴을 입력 3,000토큰 + 출력 150토큰으로 가정한 대략의 비용 계산에 쓴다.
 export const TURN_INPUT_TOKENS = 3000;
 export const TURN_OUTPUT_TOKENS = 150;
 
 export type LlmModelInfo = ModelInfo & { inputPerM: number; outputPerM: number };
+
+export const LLM_SOURCES = [
+  { label: "OpenAI 가격표", url: OPENAI_PRICING_URL },
+  { label: "OpenAI 모델 목록", url: OPENAI_MODELS_URL },
+];
 
 export const LLM_MODEL_INFO: LlmModelInfo[] = [
   {
@@ -28,8 +43,7 @@ export const LLM_MODEL_INFO: LlmModelInfo[] = [
     price: "입력 $0.10 · 출력 $0.50 / 100만 토큰",
     inputPerM: 0.1,
     outputPerM: 0.5,
-    speed: "가장 빠른 편",
-    summary: "가장 저렴한 효율 모델. 상담처럼 짧고 반복적인 대량 응답에 맞고, 기본값으로 추천합니다.",
+    summary: "공식 설명: 집중된 대량 작업을 위한 가장 효율적인 모델.",
     recommended: true,
   },
   {
@@ -38,8 +52,7 @@ export const LLM_MODEL_INFO: LlmModelInfo[] = [
     price: "입력 $1 · 출력 $5 / 100만 토큰",
     inputPerM: 1,
     outputPerM: 5,
-    speed: "빠름",
-    summary: "빠르고 효율적인 중간 모델. 문장이 더 자연스러워야 할 때 Luna 다음 후보입니다.",
+    summary: "공식 설명: 시각 추론, 컴퓨터 사용, 자연스러운 글쓰기를 위한 빠르고 효율적인 모델.",
   },
   {
     id: "gpt-6-sol",
@@ -47,8 +60,7 @@ export const LLM_MODEL_INFO: LlmModelInfo[] = [
     price: "입력 $2 · 출력 $10 / 100만 토큰",
     inputPerM: 2,
     outputPerM: 10,
-    speed: "보통",
-    summary: "복잡한 판단과 긴 맥락에 강한 고성능 모델.",
+    summary: "공식 가격표에만 등재되어 있고 모델 설명은 없습니다.",
   },
   {
     id: "gpt-6.1-sol",
@@ -56,8 +68,7 @@ export const LLM_MODEL_INFO: LlmModelInfo[] = [
     price: "입력 $2 · 출력 $10 / 100만 토큰",
     inputPerM: 2,
     outputPerM: 10,
-    speed: "보통",
-    summary: "Astra에 가까운 성능을 더 낮은 가격에. 복잡한 업무 처리에 적합합니다.",
+    summary: "공식 설명: 복잡한 작업에서 Astra에 가까운 성능을 더 낮은 비용으로.",
   },
   {
     id: "gpt-6-astra",
@@ -65,42 +76,27 @@ export const LLM_MODEL_INFO: LlmModelInfo[] = [
     price: "입력 $10 · 출력 $50 / 100만 토큰",
     inputPerM: 10,
     outputPerM: 50,
-    speed: "느린 편",
-    summary: "최상위 플래그십. 비용이 Luna의 100배라 일반 상담에는 과합니다.",
+    summary: "공식 설명: 복잡한 추론과 코딩을 위한 플래그십 모델.",
   },
 ];
 
 export function estimateTurnCostUsd(model: LlmModelInfo) {
-  return (
-    (TURN_INPUT_TOKENS * model.inputPerM + TURN_OUTPUT_TOKENS * model.outputPerM) / 1_000_000
-  );
+  return (TURN_INPUT_TOKENS * model.inputPerM + TURN_OUTPUT_TOKENS * model.outputPerM) / 1_000_000;
 }
 
 export const STT_MODEL_INFO: ModelGroup[] = [
   {
     title: "OpenAI",
-    note: "속도는 한국어 한 문장(약 5초) 기준 실측입니다.",
+    note: "공식 가격표에 속도 수치는 없습니다.",
+    sources: [{ label: "OpenAI 가격표", url: OPENAI_PRICING_URL }],
     models: [
       {
         id: "gpt-transcribe",
         name: "gpt-transcribe",
         price: "분당 $0.0045 (통화 1시간 약 $0.27)",
-        speed: "약 1.2초",
-        summary: "OpenAI 최신 음성 인식. 구형 gpt-4o-transcribe보다 싸고 속도는 비슷합니다.",
+        summary: "같은 가격표의 gpt-4o-transcribe는 분당 약 $0.006(추정)입니다.",
+        measured: "한국어 한 문장(약 5초) 1.2초",
         recommended: true,
-      },
-    ],
-  },
-  {
-    title: "Deepgram (실시간 스트리밍)",
-    note: "말하는 도중 실시간으로 받아 적어 체감 지연이 줄어듭니다. 별도 키가 필요합니다.",
-    models: [
-      {
-        id: "nova-3",
-        name: "Nova-3",
-        price: "가격 미확인 (Deepgram 요금제 확인 필요)",
-        speed: "실시간 스트리밍",
-        summary: "브라우저가 직접 연결해 말하는 중에 전사합니다.",
       },
     ],
   },
@@ -109,56 +105,65 @@ export const STT_MODEL_INFO: ModelGroup[] = [
 export const TTS_MODEL_INFO: ModelGroup[] = [
   {
     title: "ElevenLabs",
-    note: "속도는 한국어 한 문장을 합성하는 데 걸린 전체 시간(2회 평균)입니다. 목소리는 Voice ID로 고릅니다.",
+    note: "공식 지연 수치는 애플리케이션·네트워크 지연을 뺀 중앙값입니다. 목소리는 Voice ID로 고릅니다.",
+    sources: [
+      { label: "ElevenLabs 모델 문서", url: ELEVENLABS_MODELS_URL },
+      { label: "ElevenLabs API 가격", url: ELEVENLABS_PRICING_URL },
+    ],
     models: [
       {
         id: "eleven_flash_v2_5",
         name: "Flash v2.5",
         price: "1천 글자당 $0.04",
-        speed: "약 0.4초",
-        summary: "가장 빠르고 저렴한 실시간용. 숫자·날짜는 한글로 풀어 쓰는 편이 자연스럽습니다.",
+        summary: "공식 설명: 빠르고 저렴한 모델. 실시간 에이전트용. 32개 언어(한국어 포함). 숫자·날짜·금액은 기본으로 정규화되지 않습니다.",
+        officialSpeed: "중앙값 약 100ms",
+        measured: "한국어 한 문장 전체 합성 약 0.4초",
         recommended: true,
       },
       {
         id: "eleven_v4_turbo",
         name: "v4 Turbo",
         price: "1천 글자당 $0.04",
-        speed: "약 1.0초",
-        summary: "v4의 실시간 버전. Flash와 같은 가격에 더 풍부한 표현을 기대할 수 있습니다.",
+        summary: "공식 설명: v4의 실시간 버전. 높은 품질과 표현력, 90개 이상 언어. 실시간 음성 에이전트용.",
+        officialSpeed: "중앙값 약 100ms",
+        measured: "한국어 한 문장 전체 합성 약 1.0초",
       },
       {
         id: "eleven_v3_conversational",
         name: "v3 Conversational",
         price: "1천 글자당 $0.04",
-        speed: "약 1.0초",
-        summary: "v3의 실시간 대화용 버전.",
+        summary: "공식 설명: 이전 세대의 표현력 있는 실시간 대화용 모델. 70개 이상 언어.",
+        officialSpeed: "중앙값 약 165ms",
+        measured: "한국어 한 문장 전체 합성 약 1.0초",
       },
       {
         id: "eleven_multilingual_v2",
         name: "Multilingual v2",
         price: "1천 글자당 $0.08",
-        speed: "약 0.7초",
-        summary: "안정적이고 긴 문장에 강합니다. Flash의 2배 가격입니다.",
+        summary: "공식 설명: 이전 세대. 자연스럽고 일관되며 긴 글에 안정적. 29개 언어. Flash보다 글자당 비용이 높습니다.",
+        officialSpeed: "Flash보다 높음 (수치 미공개)",
+        measured: "한국어 한 문장 전체 합성 약 0.7초",
       },
       {
         id: "eleven_v4",
         name: "v4",
         price: "1천 글자당 $0.08",
-        speed: "약 1.7초",
-        summary: "최고 품질과 감정 표현. 실시간 상담에는 느립니다.",
+        summary: "공식 설명: 가장 높은 품질과 감정 표현. 90개 이상 언어. 캐릭터 보이스, 오디오북 등 콘텐츠용.",
+        measured: "한국어 한 문장 전체 합성 약 1.7초",
       },
     ],
   },
   {
     title: "OpenAI",
-    note: "속도는 짧은 영어 문장 1회 측정이라 참고용입니다.",
+    note: "공식 가격표에 속도 수치는 없습니다.",
+    sources: [{ label: "OpenAI 가격표", url: OPENAI_PRICING_URL }],
     models: [
       {
         id: "gpt-4o-mini-tts",
         name: "gpt-4o-mini-tts",
-        price: "입력 $0.60 · 음성 출력 $12 / 100만 토큰",
-        speed: "약 2.1초",
-        summary: "OpenAI 음성 합성. 목소리 13종 중에서 고르며 ElevenLabs보다 느립니다.",
+        price: "텍스트 입력 $0.60 · 음성 출력 $12 / 100만 토큰",
+        summary: "목소리는 이름(marin, cedar 등 13종)으로 고릅니다.",
+        measured: "짧은 영어 문장 1회 약 2.1초 (참고용)",
       },
     ],
   },

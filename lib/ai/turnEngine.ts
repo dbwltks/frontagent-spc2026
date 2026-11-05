@@ -75,6 +75,12 @@ function composeSystemPrompt(
 export async function* runTurn({ organizationId, sessionId, channel, userMessage, signal }: RunTurnOptions): AsyncGenerator<TurnEvent> {
   const supabase = createSupabaseServiceClient();
 
+  // 지식 검색(임베딩 + RPC 여러 번)이 knowledge 턴에서 가장 오래 걸리는 구간이다. 분류 결과를
+  // 기다렸다 시작하면 그만큼 직렬로 더해지므로 미리 시작해 두고, knowledge로 분류됐을 때만 결과를 쓴다
+  // (임베딩 비용은 턴당 사실상 0원). 쓰이지 않아도 실패가 unhandled rejection이 되지 않게 catch를 달아 둔다.
+  const knowledgeSearch = searchKnowledge(organizationId, userMessage, { matchCount: 5 });
+  knowledgeSearch.catch(() => undefined);
+
   // conversation 조회(없으면 생성)도 이 배치 안에 넣는다 — 이전엔 이게 아래
   // Promise.all보다 먼저, 혼자 순차로 한 번 더 왕복했다. conversation.id가
   // 꼭 있어야만 하는 두 가지(대화 히스토리 조회, 고객 메시지 기록)만 이
@@ -88,16 +94,11 @@ export async function* runTurn({ organizationId, sessionId, channel, userMessage
       .eq("organization_id", organizationId)
       .maybeSingle()
       .then(({ data }) => data),
-    supabase
-      .from("rules")
-      .select("name, instruction")
-      .eq("organization_id", organizationId)
-      .eq("is_active", true)
-      .then(async ({ data }) => {
-        // 조직이 만든 규칙 + 켜져 있는 기본 규칙을 함께 적용한다.
-        const builtin = (await loadBuiltinRules(supabase, organizationId)).filter((rule) => rule.is_active);
-        return [...builtin, ...(data ?? [])];
-      }),
+    // 조직이 만든 규칙 + 켜져 있는 기본 규칙을 함께 적용한다(둘은 서로 의존하지 않아 동시에 조회).
+    Promise.all([
+      supabase.from("rules").select("name, instruction").eq("organization_id", organizationId).eq("is_active", true),
+      loadBuiltinRules(supabase, organizationId),
+    ]).then(([{ data }, builtin]) => [...builtin.filter((rule) => rule.is_active), ...(data ?? [])]),
     getActiveTaskSession(organizationId, sessionId),
     // "task" 분류로 갈 때 쓸 플로우 목록도 여기서 같이 당겨둔다 — 안 쓰더라도
     // 저렴한 읽기라, 순차로 또 왕복하는 것보다 미리 받아두는 게 낫다.
@@ -191,7 +192,13 @@ export async function* runTurn({ organizationId, sessionId, channel, userMessage
       // 없이 일관된 멘트가 필요한 경우가 많다), 없으면 기본 캔 응답 중 하나를 고른다.
       const customGreeting = intent.choice === "chat_greeting" ? settingsRow?.greeting_message : null;
       const replies = CANNED_REPLIES[intent.choice];
-      const reply = customGreeting?.trim() || replies[Math.floor(Math.random() * replies.length)];
+      const company = settingsRow?.company_name?.trim();
+      const reply =
+        customGreeting?.trim() ||
+        // 회사명이 있으면 첫 인사에 붙여서 "어느 회사 상담원인지"가 바로 드러나게 한다.
+        (intent.choice === "chat_greeting" && company
+          ? `안녕하세요, ${company}입니다. 무엇을 도와드릴까요?`
+          : replies[Math.floor(Math.random() * replies.length)]);
       answer = reply;
       cannedHandled = true;
       yield { type: "delta", text: reply };
@@ -199,7 +206,7 @@ export async function* runTurn({ organizationId, sessionId, channel, userMessage
       effectiveTools = {};
     } else if (intent.choice === "knowledge") {
       try {
-        const matches = await searchKnowledge(organizationId, userMessage, { matchCount: 5 });
+        const matches = await knowledgeSearch;
         yield { type: "knowledge_start", queries: [userMessage] };
         ragContext = matches.map((m) => `- ${m.content}`).join("\n") || "(관련 내용 없음)";
         // 사전 검색에서 아무것도 못 찾았을 때는 search_knowledge를 남겨둔다 — 다른 표현으로

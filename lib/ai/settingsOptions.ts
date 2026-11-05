@@ -6,12 +6,9 @@ export const SETTINGS_OPTIONS = {
   llm_models: ["gpt-6-luna", "gpt-6.1-terra", "gpt-6-sol", "gpt-6.1-sol", "gpt-6-astra"],
   // 음성은 pipeline(STT→LLM→TTS)만 지원한다. realtime은 만들지 않기로 한 결정.
   voice_modes: ["pipeline"],
-  stt_providers: ["openai", "deepgram_streaming"],
+  stt_providers: ["openai"],
   stt_models_by_provider: {
     openai: ["gpt-transcribe"],
-    // 브라우저가 Deepgram에 WebSocket으로 직접 붙어 말하는 도중 실시간 전사한다
-    // (batch 업로드 방식과 나란히 A/B 테스트하려고 추가 — voice_stt_provider로 토글).
-    deepgram_streaming: ["nova-3"],
   },
   tts_providers: ["openai", "elevenlabs"],
   tts_models_by_provider: {
